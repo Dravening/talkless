@@ -1,0 +1,56 @@
+0.初始化：configcenter/scripts下创建目录cmdb_adminserver\comfigures，进入scripts执行以下命令。
+python init.py --discovery 127.0.0.1:2181 --database cmdb --redis_ip 127.0.0.1 --redis_port 6379 --redis_pass cc --mongo_ip 127.0.0.1 --mongo_port 27017 --mongo_user cc --mongo_pass cc --blueking_cmdb_url http://127.0.0.1:8083 --listen_port 8083
+
+1.redis
+cd C:\Program Files\Redis
+redis-server.exe redis.windows.conf
+
+2.zk
+D:\zookeeper-3.4.10\bin\zkServer.cmd
+
+3.adminserver
+go run src\scene_server\admin_server\migrate.go  src\scene_server\admin_server\imports.go  --addrport=127.0.0.1:60005 --config=D:\go_work\src\configcenter\scripts\cmdb_adminserver\configures\migrate.conf --enable-auth=false
+
+4.toposerver
+go run src\scene_server\topo_server\topo.go --addrport=127.0.0.1:60001 --regdiscv=127.0.0.1:2181 --enable-auth=false
+
+5.hostserver
+go run src\scene_server\host_server\host.go --addrport=127.0.0.1:60002 --regdiscv=127.0.0.1:2181 --enable-auth=false
+
+6.procserver
+go run src\scene_server\proc_server\process.go --addrport=127.0.0.1:60003 --regdiscv=127.0.0.1:2181 --enable-auth=false
+
+7.datacollection
+go run src\scene_server\datacollection\datacollection.go --addrport=127.0.0.1:50006 --regdiscv=127.0.0.1:2181 --enable-auth=false
+
+8.tmserver
+go run src\storage\tmserver\main.go --addrport=127.0.0.1:60011 --regdiscv=127.0.0.1:2181
+
+9.eventserver
+go run src\scene_server\event_server\event.go --addrport=127.0.0.1:60009 --regdiscv=127.0.0.1:2181 --enable-auth=false
+
+10.coreservice
+go run src\source_controller\coreservice\main.go --addrport=127.0.0.1:60010 --regdiscv=127.0.0.1:2181
+
+11.apiserver
+go run src\apiserver\main.go --addrport=127.0.0.1:8080 --regdiscv=127.0.0.1:2181 --enable-auth=false
+
+12.webserver
+go run src\web_server\ui.go --addrport=127.0.0.1:8083 --regdiscv=127.0.0.1:2181
+
+12.5.operationserver
+go run src\scene_server\operation_server\main.go --addrport=127.0.0.1:60023 --regdiscv=127.0.0.1:2181  --enable-auth=false
+
+13.初始化数据库
+http://127.0.0.1:60005/migrate/v3/migrate/community/0    调用postman向这个地址发送post
+
+14.安装依赖
+cd src/ui
+cnpm install
+
+15.修改配置文件
+打开configcenter/src/ui/config/index.js，修改url:     localhost:9090/proxy     和target:      localhost:8083
+
+16.运行前端
+cd configcenter/src/ui
+cnpm run dev

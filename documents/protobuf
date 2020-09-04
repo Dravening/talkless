@@ -1,0 +1,55 @@
+1.首先你需要在github上下载github.com/gogo/protobuf和github.com/Knetic/govaluate
+2.然后你需要一个编译好了的protoc的可执行文件，你可以在github.com/protocolbuffers/protobuf下载源码，然后在本机上编译。也可以直接从官网下载已经生成好了的可执行文件，地址如下github.com/google/protobuf/releases。
+3.接下来你要编译gogo的protoc-gen-go文件，进入github.com\gogo\protobuf\protoc-gen-gogofast和github.com\gogo\protobuf\protoc-gen-gogo（这里我就选用了这2个），使用go
+  build命令生成可执行文件。并将生成的文件和protoc.exe一起放入bin目录下。
+4.接下来在我们的test文件夹里创建一个proto文件，并附上内容
+
+
+
+
+https://blog.csdn.net/JusticeAngle/article/details/106692417
+https://www.jianshu.com/p/cae40f8faf1e
+
+/////////////////////////////////////////////////////////////////////
+我们需要自定义一个 schema 来定义数据结构的描述，即下面的 message,即api.proto
+
+syntax = "proto3"; // PB协议版本
+
+import "google/protobuf/any.proto"; // 引用外部的message，可以是本地的，也可以是此处比较特殊的 Any
+
+package jet.protobuf; // 包名，其他 proto 在引用此 proto 的时候，就可以使用 test.protobuf.PersonTest 来使用，
+// 注意：和下面的 java_package 是两种易混淆概念，同时定义的时候，java_package 具有较高的优先级
+
+option java_package = "com.jet.protobuf"; // 生成类的包名，注意：会在指定路径下按照该包名的定义来生成文件夹
+option java_outer_classname="PersonTestProtos"; // 生成类的类名，注意：下划线的命名会在编译的时候被自动改为驼峰命名
+
+message PersonTest {
+    int32 id = 1; // int 类型
+    string name = 2; // string 类型
+    string email = 3;
+    Sex sex = 4; // 枚举类型
+    repeated PhoneNumber phone = 5; // 引用下面定义的 PhoneNumber 类型的 message
+    map<string, string> tags = 6; // map 类型
+    repeated google.protobuf.Any details = 7; // 使用 google 的 any 类型
+
+    // 定义一个枚举
+    enum Sex {
+        DEFAULT = 0;
+        MALE = 1;
+        Female = 2;
+    }
+
+    // 定义一个 message
+    message PhoneNumber {
+        string number = 1;
+        PhoneType type = 2;
+
+        enum PhoneType {
+            MOBILE = 0;
+            HOME = 1;
+            WORK = 2;
+        }
+
+    }
+
+}

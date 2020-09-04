@@ -1,0 +1,26 @@
+单次执行：
+C:\"Program Files"\MongoDB\Server\4.0\bin\mongod.exe
+--replSet rs0
+--port 27017
+--dbpath "C:\Program Files\MongoDB\Server\4.0\data"
+--logpath "C:\Program Files\MongoDB\Server\4.0\log\mongod.log"
+-------------------------------------------------------------------------------------------
+注册开机自启动（实测不好使）：
+C:\"Program Files"\MongoDB\Server\4.0\bin\mongod.exe
+--replSet rs0
+--port 27017
+--dbpath "C:\Program Files\MongoDB\Server\4.0\data"
+--logpath "C:\Program Files\MongoDB\Server\4.0\log\mongod.log"
+--install
+--serviceName “MongoDB"
+--------------------------------------------------------------------------------------------
+注册开机自启（实测可用）：
+1.win+R，输入regedit，路径：计算机\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MongoDB
+2.找到imagePath，修改内容为：
+C:\Program Files\MongoDB\Server\4.0\bin\mongod.exe
+--replSet rs0
+--port 27017
+--dbpath "C:\Program Files\MongoDB\Server\4.0\data"
+--logpath "C:\Program Files\MongoDB\Server\4.0\log\mongod.log"
+--service
+3.开启计算机/管理/服务/mongoDB Server 即可（如无法开启，请删除mongo路径data下的"mongod.lock"和"storage.bson"文件）
