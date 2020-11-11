@@ -29,7 +29,7 @@ type ITenant interface {
 //Landlord 房东，也继承Person，要收房租
 type Landlord struct {
 	Person
-	RentAccout int //房东的租金账户
+	RentAccount int //房东的租金账户
 }
 
 //ILandlord 房东能做的事情
@@ -66,7 +66,7 @@ func (t *Tenant) AskRepair(mediator IMediator) {
 //CollectRent 房东收租金,只需要向中介收，中介会提代替房东收租金
 func (l *Landlord) CollectRent(mediator IMediator) {
 	fmt.Println("Landlord: collect money")
-	fmt.Printf("Landlord: RentAccout %d, WalletAssets %d\n", l.RentAccout, l.WalletAssets)
+	fmt.Printf("Landlord: RentAccout %d, WalletAssets %d\n", l.RentAccount, l.WalletAssets)
 	mediator.Serve(l)
 
 }

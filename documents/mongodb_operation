@@ -1,0 +1,1 @@
+db.cc_ObjectBase.update({"bk_inst_name":'draven2'},{$set:{"metadata":{"label":{"bk_biz_id":"2"}}}})

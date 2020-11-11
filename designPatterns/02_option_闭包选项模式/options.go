@@ -62,5 +62,5 @@ func Introduce(name string, setters ...Option /*传入闭包设置函数*/) {
 		gender = "male"
 	}
 	fmt.Println("----------------------")
-	fmt.Println("im am: ", name, "\nfrom: ", args.Company, "\ngender: ", gender, "\nUID: ", args.UID)
+	fmt.Println("im am: ", name, "\nfrom: ", args.Company, "\ngender: ", gender, "\nUID: ", args.UID, "\nGID: ", args.GID)
 }
