@@ -1,0 +1,4 @@
+1.redis-cli批处理
+在testScript.txt文件中写好redis的指令,比如PUBLISH ****(channelName) "something"
+使用powerShell或者git_shell执行下方语句。
+cat testScript.txt | redis-cli.exe -h 127.0.0.1 -p 6379 -a cc
