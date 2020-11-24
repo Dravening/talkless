@@ -1,0 +1,4 @@
+1.拉下一个pr代码,建立并切换到这个代码的分支上。
+    git fetch origin refs/pull/4885/head
+    git branch -D "xxx"
+    git checkout FETCH_HEAD -b "xxx"
