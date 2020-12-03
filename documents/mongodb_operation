@@ -1,1 +1,13 @@
 db.cc_ObjectBase.update({"bk_inst_name":'draven2'},{$set:{"metadata":{"label":{"bk_biz_id":"2"}}}})
+
+db.cc_ObjAsst.find(
+    {
+    "bk_obj_asst_id":{
+        $in:["host_bk_mainline_module","bk_switch_connect_host"]
+        },
+    $or:[
+        {"bk_asst_obj_id":"host"},
+        {"bk_obj_id":"host"},
+        ]
+    }
+)
