@@ -1,0 +1,35 @@
+//---------------------脚本读取mongodb,脚本插入mongodb.----------------------
+
+
+//先将输出重定向到某json文件中,再将文件中内容复制到insert语句中执行。
+//在命令行中使用 C:\Program Files\MongoDB\Server\4.0\bin> mongo queryDocument.js > queryResult.json
+
+//-----------------queryDocument.js-----------------------
+function queryFunction() {
+    db = connect("192.168.169.210:27017/cmdb");
+    db.auth("cmdb","HI9Yq4ijH2Ga")
+
+    var c = db.getCollection('cc_ObjAttDes').find().pretty();
+    var list1 = [];
+    while(c.hasNext()) {
+        //printjson(c.next());
+        list1.push(JSON.stringify(c.next()));
+    }
+    var str = list1.join(",");
+    printjson(str)
+}
+queryFunction()
+//---------------------------------------------------------
+
+
+
+
+//-------------------insert.js-----------------------------
+function insertFunction() {
+    db.cc_ObjAttDes.insert([
+        {\"_id\":{\"$oid\":\"5fd19530335efaddcb49cfba\"},\"id\":{\"$numberLong\":\"1\"},\"bk_supplier_account\":\"0\",\"bk_property_name\":\"业务名\",\"bk_property_index\":{\"$numberLong\":\"0\"},\"unit\":\"\",\"isrequired\":true,\"isreadonly\":false,\"bk_isapi\":false,\"bk_property_type\":\"singlechar\",\"option\":\"\",\"bk_property_id\":\"bk_biz_name\",\"bk_property_group\":\"default\",\"ispre\":true,\"bk_issystem\":false,\"create_time\":\"2020-12-10T03:25:36.727Z\",\"last_time\":\"2020-12-10T03:25:36.727Z\",\"bk_obj_id\":\"biz\",\"placeholder\":\"\",\"editable\":true,\"creator\":\"cc_system\"},
+    {\"_id\":{\"$oid\":\"5fd19530335efaddcb49cfc2\"},\"bk_property_index\":{\"$numberLong\":\"0\"},\"editable\":true,\"option\":\"\",\"create_time\":\"2020-12-10T03:25:36.727Z\",\"bk_supplier_account\":\"0\",\"bk_obj_id\":\"biz\",\"bk_property_group\":\"role\",\"unit\":\"\",\"placeholder\":\"\",\"isrequired\":true,\"id\":{\"$numberLong\":\"3\"},\"bk_property_id\":\"bk_biz_maintainer\",\"bk_property_name\":\"运维人员\",\"ispre\":true,\"bk_property_type\":\"objuser\",\"last_time\":\"2020-12-10T03:25:36.727Z\",\"isreadonly\":false,\"bk_issystem\":false,\"bk_isapi\":false,\"creator\":\"cc_system\"},
+    ]);
+}
+insertFunction()
+//---------------------------------------------------------
