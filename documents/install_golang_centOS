@@ -1,0 +1,12 @@
+rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO
+
+curl -s https://mirror.go-repo.io/centos/go-repo.repo | tee /etc/yum.repos.d/go-repo.repo
+
+yum install golang
+
+mkdir -p /home/go_work/{bin,pkg,src}
+
+echo 'export GOPATH="/home/go_work"' >> ~/.bashrc
+
+echo 'export PATH="$PATH:${GOPATH//://bin:}/bin"' >> ~/.bashrc
+
