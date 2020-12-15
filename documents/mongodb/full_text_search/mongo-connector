@@ -1,0 +1,9 @@
+mongo-connector工具支持MongoDB与ES之间的实时增insert、删delete、改update操作
+mongodb必须开启复制集。
+
+配置文件: mongo-connector -c config/mongo_es_config.json
+
+1.pip install mongo-connector[elastic5]
+2.pip install elastic2-doc-manager
+3.mongo-connector -m 127.0.0.1:27017 -t 127.0.0.1:9200 -d elastic2_doc_manager
+
