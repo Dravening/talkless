@@ -1,4 +1,4 @@
-package try
+package cmd_timeout
 
 import (
 	"context"

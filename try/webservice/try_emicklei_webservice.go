@@ -1,4 +1,4 @@
-package try
+package webservice
 
 import (
 	webservice "github.com/emicklei/go-restful/v3"
