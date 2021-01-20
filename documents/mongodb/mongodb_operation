@@ -1,5 +1,15 @@
-db.cc_ObjectBase.update({"bk_inst_name":'draven2'},{$set:{"metadata":{"label":{"bk_biz_id":"2"}}}})
+----------------mongodb登录----------------
+[root@131 ~]# mongo
+rs0:PRIMARY> use admin
+rs0:PRIMARY> db.auth("root","AK753cp_7_AQ")
+rs0:PRIMARY> use cmdb
+------------------------------------------
 
+--------------mongodb update--------------
+db.cc_ObjectBase.update({"bk_inst_name":'draven2'},{$set:{"metadata":{"label":{"bk_biz_id":"2"}}}})
+------------------------------------------
+
+---------------mongodb find---------------
 db.cc_ObjAsst.find(
     {
     "bk_obj_asst_id":{
@@ -11,3 +21,4 @@ db.cc_ObjAsst.find(
         ]
     }
 )
+------------------------------------------
