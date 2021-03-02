@@ -1,0 +1,6 @@
+restful协议有“GET、HEAD、POST、PUT、DELETE、OPTIONS、TRACE、PATCH”八种请求方法。
+
+Head：与get方法类似，但不返回message body内容，仅仅是获得获取资源的部分信息（content-type、content-length）
+Trace：回显服务器收到的请求，这样客户端可以看到（如果有）哪一些改变或者添加已经被中间服务器实现
+Patch：用于创建、更新资源，与PUT类似，区别在于PATCH代表部分更新
+options：用于url验证，验证接口服务是否正常，（一般是框架提供）。
