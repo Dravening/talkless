@@ -46,5 +46,8 @@
 
 ![test_result](.\img\test_result.png)
 
+### 8.备注
 
+另外，对于阶梯式的逐步增压方案，JMeter也有支持。
+请加载JMeter软件Templates目录下的step_thread_group.jmx模板。
 
