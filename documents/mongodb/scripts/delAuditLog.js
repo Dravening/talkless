@@ -1,8 +1,8 @@
 let db = connect("192.168.169.210:27017/cmdb");
 db.auth("cmdb","HI9Yq4ijH2Ga");
 
-// 平台2.5版本填"cc_OperationLog", 平台3.0版本填"cc_AuditLog"
-const collectionName = "cc_AuditLog"
+// 平台版本2.5填0，平台版本3.0填1
+const bkVersion = 1
 
 // delStartDay最好填一个比较大的数，如果客户的cmdb是156天前部署的，这里可以填160。
 let delStartDay = 160
@@ -11,8 +11,11 @@ let delStartDay = 160
 let delEndDay = 30
 
 
-//------------请用户按需更改上方内容-----------------------------------------------------------
+//------------请用户按需填写上方内容---------------
 
+//------------请用户不要修改下方内容---------------
+let  arr  = ["cc_OperationLog", "cc_AuditLog"];
+let collectionName = arr[bkVersion];
 
 function countData(db, i) {
     let y = Math.floor(new Date(new Date()-1000*60*60*24*i).getTime()/1000).toString(16) + "0000000000000000"
