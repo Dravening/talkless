@@ -41,6 +41,8 @@
 
 3.确定ntp时间同步正常（略）
 
+### 部署GlusterFs
+
 4.安装glusterfs（所有节点）
 
 ```
@@ -148,6 +150,8 @@ Hostname: cos-3
 Uuid: 647b7863-5e65-4b47-8936-72457b789f53
 State: Peer in Cluster (Connected)
 ```
+
+### 部署Heketi
 
 8.下载并安装heketi
 
@@ -361,6 +365,8 @@ Creating cluster ... ID: 2cc5c45ded7672c490b7014e8c683f8c
 Clusters:
 Id:65e9887f72856eee2edb604374426c83 [file][block]
 ```
+
+### 验证部署结果
 
 14.手动测试集群情况
 
