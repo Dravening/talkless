@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: es-log
+  namespace: demo-datathread
+spec:
+  serviceName: es-log
+  replicas: 1 
+  selector:
+    matchLabels:
+      app: es-log
+  template:
+    metadata:
+      labels:
+        app: es-log
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - "es-log" 
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: es-log 
+#这个镜像里面改了跨域的配置
+          image: registry-edge.cosmoplat.com/kubesphere/my-elasticsearch:7.17.7
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          ports:
+          - containerPort: 9200
+            name: http
+          - containerPort: 9300
+            name: transport             
+          env:
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: cluster.name
+              value: "es-log"
+            - name: cluster.initial_master_nodes
+              value: "es-log-0"
+            - name: discovery.zen.ping.unicast.hosts
+              value: "es-log-0"
+            - name: ES_JAVA_OPTS
+              value: "-Xms1g -Xmx1g"
+          resources:
+            requests:
+              memory: 1Gi
+            limits:
+              memory: 2500Mi
+          livenessProbe:
+            tcpSocket:
+              port: transport
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: http 
+            initialDelaySeconds: 20
+            timeoutSeconds: 5
+            periodSeconds: 20
+          volumeMounts:
+            - name: es-data
+              mountPath: /usr/share/elasticsearch/data
+      initContainers:
+        - name: fix-permissions 
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command: ["sh", "-c", "chmod 777 /usr/share/elasticsearch/data"]          
+          volumeMounts:
+            - name: es-data
+              mountPath: /usr/share/elasticsearch/data
+
+  volumeClaimTemplates:
+  - metadata:
+      name: es-data
+      labels:
+        app: es-log
+    spec:
+      accessModes: [ ReadWriteOnce ]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: es-log
+  namespace: demo-datathread
+  labels:
+    app: es-log
+spec:
+  selector:
+    app: es-log
+  ports:
+    - protocol: TCP
+      port: 9200
+      targetPort: 9200
+      name: http-port
+    - protocol: TCP
+      port: 9300
+      targetPort: 9300
+      name: trans-port

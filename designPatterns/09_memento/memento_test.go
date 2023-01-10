@@ -2,7 +2,6 @@ package memento
 
 import (
 	"testing"
-	"time"
 )
 
 func TestGameArchive(t *testing.T) {

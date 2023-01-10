@@ -26,7 +26,7 @@ func TestClassCompose(t *testing.T) {
 
 	med := &Mediator{Person: Person{Name: "mediator", WalletAssets: 1001}}
 
-	landlord := &Landlord{Person: Person{Name: "landlord", WalletAssets: 2000}, RentAccout: 500}
+	landlord := &Landlord{Person: Person{Name: "landlord", WalletAssets: 2000}, RentAccount: 500}
 
 	tenant := &Tenant{Person: Person{Name: "tenant", WalletAssets: 500}, furniture: "desk"}
 
