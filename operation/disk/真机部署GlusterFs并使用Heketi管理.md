@@ -6,11 +6,11 @@
 
 > 注意：GlusterFS至少要三个节点才能正常使用，切记不要骗自己
 
-| 主机名 | IP 地址       | 操作系统                    | 设备           |
-| :----- | :------------ | :-------------------------- | :------------- |
-| cos-1  | 192.168.0.89  | CentOS 7.9，2 核，4 GB 内存 | /dev/vdb 20 GB |
-| cos-2  | 192.168.0.210 | CentOS 7.9，2 核，4 GB 内存 | /dev/vdb 20 GB |
-| cos-3  | 192.168.0.247 | CentOS 7.9，2 核，4 GB 内存 | /dev/vdb 20 GB |
+| 主机名 | IP 地址       | 操作系统                    | 设备            |
+| :----- | :------------ | :-------------------------- | :-------------- |
+| cos-1  | 192.168.0.89  | CentOS 7.9，2 核，4 GB 内存 | /dev/vdb 100 GB |
+| cos-2  | 192.168.0.210 | CentOS 7.9，2 核，4 GB 内存 | /dev/vdb 100 GB |
+| cos-3  | 192.168.0.247 | CentOS 7.9，2 核，4 GB 内存 | /dev/vdb 100 GB |
 
 #### 前置安装
 
@@ -162,7 +162,7 @@ State: Peer in Cluster (Connected)
 ```
 
 ```
-[root@cos-1 ~]# tar -xf heketi-v7.0.0.linux.amd64.tar.gz
+[root@cos-1 ~]# tar -xf heketi-v10.4.0-release-10.linux.amd64.tar.gz
 [root@cos-1 ~]# cd heketi
 [root@cos-1 heketi]# cp heketi /usr/bin
 [root@cos-1 heketi]# cp heketi-cli /usr/bin
@@ -344,13 +344,20 @@ EOF
 ```
 
 ```
+[root@cosmo-1 heketi]# echo "export HEKETI_CLI_USER=admin" >> ~/.bashrc
+[root@cosmo-1 heketi]# echo "export HEKETI_CLI_KEY=123456" >> ~/.bashrc
+```
+
+```
 [root@cosmo-1 heketi]# heketi-cli topology load --json=/etc/heketi/topology.json --user admin --secret 123456
-Creating cluster ... ID: 2cc5c45ded7672c490b7014e8c683f8c
+Creating cluster ... ID: 64331a518ffd7e6ae5a0cd3cd8994c03
         Allowing file volumes on cluster.
         Allowing block volumes on cluster.
-        Creating node 192.168.0.215 ... ID: 24b8ca6752ae02b3b1add687c682d268
+        Creating node cos-1 ... ID: 2746122ded88f7619fbf5af40decb209
                 Adding device /dev/vdb ... OK
-        Creating node 192.168.0.50 ... ID: 4193119f0e297cbdda985079ab8a6c4d
+        Creating node cos-2 ... ID: b81b65c782e68c369d280ed431985e1e
+                Adding device /dev/vdb ... OK
+        Creating node cos-3 ... ID: 72141dcdd043f83c675a24af08b9ac76
                 Adding device /dev/vdb ... OK
 ```
 
@@ -477,6 +484,8 @@ volume stop: vol_4ea09df42037a9c61355a7df7e38c82b: success
 Volume vol_4ea09df42037a9c61355a7df7e38c82b is not started
 ```
 
+> 除gluster volume status之外，还有gluster volume info和gluster volume list
+
 启动volume vol_4ea09df42037a9c61355a7df7e38c82b
 
 ```
@@ -489,5 +498,145 @@ volume start: vol_4ea09df42037a9c61355a7df7e38c82b: success
 ```
 [root@cos-1 heketi]# heketi-cli volume delete 4ea09df42037a9c61355a7df7e38c82b
 Volume 4ea09df42037a9c61355a7df7e38c82b deleted
+```
+
+### 卸载heketi和GlusterFS
+
+1.删除卷
+
+```
+[root@cos-1 heketi]# heketi-cli volume list
+```
+
+```
+[root@cos-1 heketi]# heketi-cli volume delete 3be07923cd74a76dac73a3e32d1f1a32
+```
+
+2.删除集群
+
+> 删除集群流程：下线device-->移除device-->删除device-->删除node-->删除cluster
+
+下线device
+
+```
+[root@cos-1 draven]# heketi-cli topology info | grep Size | awk '{print $1}' | cut -d: -f 2 | xargs -i heketi-cli device disable {}
+Device 0d097bc84a9deb1f5d42f779fcc04ead is now offline
+Device 74c481bd897a8ddf3a3f56da41d1c19a is now offline
+Device 8edd4df2fa839919336b59833587226a is now offline
+```
+
+移除device
+
+```
+[root@cos-1 draven]# heketi-cli topology info | grep Size | awk '{print $1}' | cut -d: -f 2 | xargs -i heketi-cli device remove {}
+Device 0d097bc84a9deb1f5d42f779fcc04ead is now removed
+Device 74c481bd897a8ddf3a3f56da41d1c19a is now removed
+Device 8edd4df2fa839919336b59833587226a is now removed
+```
+
+删除device
+
+```
+[root@cos-1 draven]# heketi-cli topology info | grep Size | awk '{print $1}' | cut -d: -f 2 | xargs -i heketi-cli device delete {}
+Device 0d097bc84a9deb1f5d42f779fcc04ead deleted
+Device 74c481bd897a8ddf3a3f56da41d1c19a deleted
+Device 8edd4df2fa839919336b59833587226a deleted
+```
+
+删除node
+
+```
+[root@cos-1 draven]# heketi-cli node list | awk '{print $1}' | cut -d: -f 2 | xargs -i heketi-cli node delete {}
+Node 0eba53b79a2736c44a7d29bcb171c678 deleted
+Node 8917b71b31339451d45ca4549145bf1b deleted
+Node 911da35966674edba56674282260b8cc deleted
+```
+
+删除cluster
+
+```
+[root@cos-1 draven]# heketi-cli cluster list | grep Id | awk '{print $1}' | cut -d: -f 2 | xargs -i heketi-cli cluster delete {}
+Cluster 65e9887f72856eee2edb604374426c83 deleted
+```
+
+3.停止heketi
+
+```
+[root@cos-1 draven]# systemctl stop heketi
+```
+
+```
+[root@cos-1 draven]# systemctl status heketi
+● heketi.service - Heketi Server
+   Loaded: loaded (/usr/lib/systemd/system/heketi.service; enabled; vendor preset: disabled)
+   Active: inactive (dead) since Wed 2023-01-11 09:21:22 CST; 2min 5s ago
+  Process: 24514 ExecStart=/usr/bin/heketi --config=/etc/heketi/heketi.json (code=exited, status=0/SUCCESS)
+ Main PID: 24514 (code=exited, status=0/SUCCESS)
+
+Jan 11 09:21:16 cos-1 heketi[24514]: [heketi] INFO 2023/01/11 09:21:16 Periodic health check status: node 8917b71b31339451d45ca4549145bf1b up=true
+Jan 11 09:21:16 cos-1 heketi[24514]: [cmdexec] INFO 2023/01/11 09:21:16 Check Glusterd service status in node cos-2
+Jan 11 09:21:16 cos-1 heketi[24514]: [cmdexec] DEBUG 2023/01/11 09:21:16 heketi/pkg/remoteexec/log/commandlog.go:34:log.(*CommandLogger).Before: Will run comm... [cos-2:22]
+Jan 11 09:21:16 cos-1 heketi[24514]: [cmdexec] DEBUG 2023/01/11 09:21:16 heketi/pkg/remoteexec/log/commandlog.go:41:log.(*CommandLogger).Success: Ran command ...rr filtered
+Jan 11 09:21:16 cos-1 heketi[24514]: [heketi] INFO 2023/01/11 09:21:16 Periodic health check status: node 911da35966674edba56674282260b8cc up=true
+Jan 11 09:21:16 cos-1 heketi[24514]: [heketi] INFO 2023/01/11 09:21:16 Cleaned 0 nodes from health cache
+Jan 11 09:21:22 cos-1 systemd[1]: Stopping Heketi Server...
+Jan 11 09:21:22 cos-1 heketi[24514]: Shutting down...
+Jan 11 09:21:22 cos-1 heketi[24514]: [heketi] INFO 2023/01/11 09:21:22 Closed
+Jan 11 09:21:22 cos-1 systemd[1]: Stopped Heketi Server.
+Hint: Some lines were ellipsized, use -l to show in full.
+```
+
+4.踢出glusterfs节点
+
+```
+[root@cos-1 draven]# gluster peer status
+Number of Peers: 2
+
+Hostname: cos-2
+Uuid: 23f72798-69c5-4620-981e-4e70aed67427
+State: Peer in Cluster (Connected)
+Other names:
+192.168.0.210
+
+Hostname: cos-3
+Uuid: 647b7863-5e65-4b47-8936-72457b789f53
+State: Peer in Cluster (Connected)
+Other names:
+192.168.0.247
+```
+
+```
+[root@cos-1 draven]# gluster peer detach cos-2
+All clients mounted through the peer which is getting detached need to be remounted using one of the other active peers in the trusted storage pool to ensure client gets notification on any changes done on the gluster configuration and if the same has been done do you want to proceed? (y/n) y
+peer detach: success
+[root@cos-1 draven]# gluster peer detach cos-3
+All clients mounted through the peer which is getting detached need to be remounted using one of the other active peers in the trusted storage pool to ensure client gets notification on any changes done on the gluster configuration and if the same has been done do you want to proceed? (y/n) y
+peer detach: success
+```
+
+4.停止glusterfs服务
+
+```
+[root@cos-1 draven]# systemctl stop glusterd.service
+```
+
+```
+[root@cos-1 draven]# systemctl status glusterd.service
+● glusterd.service - GlusterFS, a clustered file-system server
+   Loaded: loaded (/usr/lib/systemd/system/glusterd.service; enabled; vendor preset: disabled)
+   Active: inactive (dead) since Wed 2023-01-11 09:46:55 CST; 3s ago
+     Docs: man:glusterd(8)
+ Main PID: 24414 (code=exited, status=15)
+
+Jan 10 18:55:37 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:4] Unknown lvalue 'StartLimitBurst' in section 'Unit'
+Jan 10 18:55:37 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:5] Unknown lvalue 'StartLimitIntervalSec' in section 'Unit'
+Jan 10 18:55:45 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:4] Unknown lvalue 'StartLimitBurst' in section 'Unit'
+Jan 10 18:55:45 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:5] Unknown lvalue 'StartLimitIntervalSec' in section 'Unit'
+Jan 10 18:56:44 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:4] Unknown lvalue 'StartLimitBurst' in section 'Unit'
+Jan 10 18:56:44 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:5] Unknown lvalue 'StartLimitIntervalSec' in section 'Unit'
+Jan 11 09:16:01 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:4] Unknown lvalue 'StartLimitBurst' in section 'Unit'
+Jan 11 09:16:01 cos-1 systemd[1]: [/usr/lib/systemd/system/glusterd.service:5] Unknown lvalue 'StartLimitIntervalSec' in section 'Unit'
+Jan 11 09:46:55 cos-1 systemd[1]: Stopping GlusterFS, a clustered file-system server...
+Jan 11 09:46:55 cos-1 systemd[1]: Stopped GlusterFS, a clustered file-system server.
 ```
 
