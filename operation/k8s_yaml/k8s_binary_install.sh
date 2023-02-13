@@ -13,7 +13,7 @@ export k8s_node02_ip="10.206.73.137"
 export k8s_node03_ip="10.206.73.138"
 
 # 三台服务器密码统一为cosmo
-# export passwd="cosmo"
+export passwd="cosmo"
 
 export master="k8s-master"
 export node01="k8s-node01"
@@ -63,28 +63,37 @@ function set_local() {
   fi
   echo 本机系统"$os"
 
-  echo "本机写入hosts配置文件..."
+  echo "本机写入hosts配置文件"
   cat >/etc/hosts <<EOF
-
-  #echo "本机配置ssh免密..."
-  #
-  #rm -f /root/.ssh/id_rsa
-  #ssh-keygen -f /root/.ssh/id_rsa -P ''
-  #export SSHPASS=$passwd
-  #for HOST in $k8s_all;do
-  #     sshpass -e ssh-copy-id -o StrictHostKeyChecking=no "$HOST"
-  #done
 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
 ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
-$k8s_master_ip k8s-master
-$k8s_node01_ip k8s-node01
-$k8s_node02_ip k8s-node02
-$k8s_node03_ip k8s-node03
+
+$k8s_master_ip $master
+$k8s_node01_ip $node01
+$k8s_node02_ip $node02
+$k8s_node03_ip $node03
 EOF
+
+  echo "本机配置ssh免密..."
+  if [ -e /root/.ssh/id_rsa ]; then
+    read -rp "/root/.ssh/id_rsa已存在,是否覆盖[y/n]" ssh_flag
+    case $ssh_flag in
+    y)
+      rm -f /root/.ssh/id_rsa
+      ssh-keygen -f /root/.ssh/id_rsa -P ''
+      export SSHPASS="$passwd"
+      for HOST in $k8s_all; do
+        sshpass -e ssh-copy-id -o StrictHostKeyChecking=no "$HOST"
+      done
+      ;;
+    *)
+      exit 0
+      ;;
+    esac
+  fi
 }
 
 function init_os() {
-
   for HOST in $k8s_all; do
     {
       #echo "配置主机 $HOST yum源"
@@ -109,10 +118,10 @@ function init_os() {
 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
 ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
 
-$k8s_master_ip k8s-master
-$k8s_node01_ip k8s-node01
-$k8s_node02_ip k8s-node02
-$k8s_node03_ip k8s-node03
+$k8s_master_ip $master
+$k8s_node01_ip $node01
+$k8s_node02_ip $node02
+$k8s_node03_ip $node03
 EOF"
 
       echo -e "$normal""关闭$HOST 防火墙"
@@ -219,6 +228,16 @@ EOF"
     fi
     sleep 20
   done
+
+  read -rp "主节点即将重启[y/n]" restart_flag
+  case $restart_flag in
+  y)
+    reboot
+    ;;
+  *)
+    exit 0
+    ;;
+  esac
 }
 
 function init_containerd() {
@@ -4870,8 +4889,8 @@ EOF
       kubectl get pods -A -o wide
       break
     fi
-    count+=1
-    if [ $count -gt 30 ]; then
+    ((count+=1))
+    if [ "$count" -gt 30 ]; then
       echo -e "$warn""已等待$((20 * count + 30))s,时间过长,请考虑手动排错"
     fi
   done
@@ -5094,8 +5113,8 @@ EOF
       kubectl get pods -A -o wide
       break
     fi
-    count+=1
-    if [ $count -gt 10 ]; then
+    ((count+=1))
+    if [ "$count" -gt 10 ]; then
       echo -e "$warn""已等待$((20 * count + 30))s,时间过长,请考虑手动排错"
     fi
   done
@@ -5223,9 +5242,11 @@ function make_dir() {
   mkdir ~/.kube
 }
 
-#----环境准备----
+#----目录----
 menu
 echo -e "$normal"menu finished
+
+#----环境准备----
 #set_local
 echo -e "$normal"set_local finished
 #init_os
