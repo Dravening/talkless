@@ -27,6 +27,7 @@ export Work='k8s-node01 k8s-node02 k8s-node03'
 k8s_all_ip=("10.206.73.143" "10.206.73.136" "10.206.73.137" "10.206.73.138")
 node_num_count=4
 
+# =====================================================================================================================
 function ping_test() {
   a=()
   for ip in $k8s_all; do
@@ -5125,19 +5126,7 @@ function menu() {
   mkdir package
   clear
   echo "#####################################################################"
-  echo -e "#           kubernetes一键安装脚本"
-  echo -e "# 作者: draven"
-  echo -e "# 网址: https://www.draven.top"
-  echo -e "# 版本: 目前仅支持v1.20.4"
-  #echo -e "# 说明: 无"
-  echo -e "# "
-  echo -e "# 该脚本示例默认四台主机，其中一台为master，三台为worker"
-  echo -e "# 将其中服务器配置好静态IP，修改如下变量中的IP即可"
-  echo -e "# 同时查看服务器中的网卡名，并将其修改"
-  echo -e "# "
-  echo -e "# 执行脚本可使用bash -x 即可显示执行中详细信息"
-  echo -e "# 该脚本已适配centos7和centos8"
-  echo -e "# 请预先手动准备好如下安装包"
+  echo -e "# 请预先手动准备好如下安装包, 并放置于./package目录下"
   echo -e "# wget https://dl.k8s.io/v1.20.4/kubernetes-server-linux-amd64.tar.gz -P ./package/"
   echo -e "# wget https://github.com/containerd/containerd/releases/download/v1.6.1/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -P ./package/"
   echo -e "# wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.amd64 -P ./package/"
@@ -5147,40 +5136,33 @@ function menu() {
   echo -e "# wget https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64 -P ./package/"
   echo "####################################################################"
   echo " -------------"
-  echo -e "  ${GREEN}1.${PLAIN}  v1.20.4"
+  echo -e "1.我的网络很好, 请自动下载"
   echo " -------------"
-  echo -e "  ${GREEN}2.${PLAIN}  v1.22.17(暂不支持)"
+  echo -e "2.我已手动下载完成, 请继续脚本"
   echo " -------------"
-  echo -e "  ${GREEN}3.${PLAIN}  v1.23.16(暂不支持)"
+  echo -e "0.退出"
   echo " -------------"
-  echo -e "  ${GREEN}4.${PLAIN}  v1.24.10(暂不支持)"
-  echo " -------------"
-  echo -e "  ${GREEN}0.${PLAIN}  退出"
-  echo
-
-  read -rp " 请选择操作[0-4]：" draven
-  case $draven in
+  read -rp " 请选择目标[1/2/0]：" cosmoplat
+  case $cosmoplat in
   0)
     exit 0
     ;;
   1)
-    echo -e "$normal""准备安装k8s v1.20.4"
+    echo -e "$normal""正在下载依赖包"
+    wget https://dl.k8s.io/v1.20.4/kubernetes-server-linux-amd64.tar.gz -P ./package/
+    wget https://github.com/containerd/containerd/releases/download/v1.6.1/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -P ./package/
+    wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.amd64 -P ./package/
+    wget https://github.com/etcd-io/etcd/releases/download/v3.5.2/etcd-v3.5.2-linux-amd64.tar.gz -P ./package/
+    wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64 -P ./package/
+    wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64 -P ./package/
+    wget https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64 -P ./package/
     ;;
   2)
-    echo -e "$normal""暂不支持v1.22.17！"
-    exit 1
-    ;;
-  3)
-    echo -e "$normal""暂不支持v1.23.16！"
-    exit 1
-    ;;
-  4)
-    echo -e "$normal""暂不支持v1.24.10！"
-    exit 1
+    echo -e "$normal""执行依赖包检测"
     ;;
   *)
-    echo -e "$normal""请选择正确的操作！"
-    exit 1
+    echo -e "$normal""未选择正确的操作,退出"
+    exit 0
     ;;
   esac
   exit_flag=0
@@ -5242,30 +5224,69 @@ function make_dir() {
   mkdir ~/.kube
 }
 
-#----目录----
-menu
-echo -e "$normal"menu finished
+echo "#####################################################################"
+echo -e "#           kubernetes一键安装脚本"
+echo -e "# 作者: cosmoplat"
+echo -e "# 版本: 目前仅支持k8s v1.20.4"
+echo -e "# "
+echo -e "# 该脚本示例默认四台主机，其中一台为master，三台为worker"
+echo -e "# 该脚本已适配centos7.9"
+echo "####################################################################"
+echo " -------------"
+echo -e "1.""[\033[33m优化系统内核\033[0m]"
+echo "  -->配置host文件
+        -->配置ssh免密登录
+        -->配置系统内核参数
+        -->升级系统内核(会重启主机)"
+echo " -------------"
+echo -e "2.""[\033[33二进制安装k8s\033[0m]"
+echo "  -->安装etcd
+        -->安装containerd
+        -->安装kube-apiserver、kubectl、kube-controller-manager、kube-scheduler
+        -->安装kubelet、kube-proxy
+        -->安装calico、coredns"
+echo " -------------"
+echo "  0.退出"
+read -rp "请选择目标[1/2/0]:" cosmoplat
+case $cosmoplat in
+0)
+  #----退出----
+  exit 0
+  ;;
+1)
+  #----环境准备----
+  set_local
+  echo -e "$normal"set_local finished
+  init_os
+  echo -e "$normal"init_os finished
+  ;;
+2)
+  #----目录----
+  menu
+  echo -e "$normal"menu finished
 
-#----环境准备----
-#set_local
-echo -e "$normal"set_local finished
-#init_os
-echo -e "$normal"init_os finished
+  #----安装依赖组件----
+  make_dir
+  echo -e "$normal"make_dir finished
+  init_local
+  echo -e "$normal"init_local finished
+  init_etcd
+  echo -e "$normal"init_etcd finished
+  init_containerd
+  echo -e "$normal"init_containerd finished
 
-#----安装依赖----
-make_dir
-echo -e "$normal"make_dir finished
-init_local
-echo -e "$normal"init_local finished
-init_etcd
-echo -e "$normal"init_etcd finished
-init_containerd
-echo -e "$normal"init_containerd finished
+  #----安装k8s组件----
+  init_k8s_master
+  echo -e "$normal"init_k8s_master finished
+  init_k8s_other
+  echo -e "$normal"init_k8s_other finished
 
-#----安装k8s----
-init_k8s_master
-echo -e "$normal"init_k8s_master finished
-init_k8s_other
-echo -e "$normal"init_k8s_other finished
-init_k8s_pod
-echo -e "$normal"init_k8s_pod finished
+  #----安装k8s应用----
+  init_k8s_pod
+  echo -e "$normal"init_k8s_pod finished
+  ;;
+*)
+  echo -e "$normal""未选择正确的操作,退出"
+  exit 0
+  ;;
+esac
