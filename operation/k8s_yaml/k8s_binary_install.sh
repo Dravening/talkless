@@ -22,7 +22,7 @@ export node03="k8s-node03"
 
 export k8s_other="k8s-node01 k8s-node02 k8s-node03"
 export k8s_all="k8s-master k8s-node01 k8s-node02 k8s-node03"
-export Master='k8s-master'
+export Masters='k8s-master'
 export Work='k8s-node01 k8s-node02 k8s-node03'
 k8s_all_ip=("10.206.73.143" "10.206.73.136" "10.206.73.137" "10.206.73.138")
 node_num_count=4
@@ -367,7 +367,7 @@ function init_local() {
   chmod +x /usr/local/sbin/runc
 
   echo -e "$normal""将所需组件发送到各k8s节点"
-  #for NODE in $Master; do echo "$NODE"; scp /usr/local/bin/kube{let,ctl,-apiserver,-controller-manager,-scheduler,-proxy} "$NODE":/usr/local/bin/; scp /usr/local/bin/etcd* $NODE:/usr/local/bin/; done
+  #for NODE in $Masters; do echo "$NODE"; scp /usr/local/bin/kube{let,ctl,-apiserver,-controller-manager,-scheduler,-proxy} "$NODE":/usr/local/bin/; scp /usr/local/bin/etcd* $NODE:/usr/local/bin/; done
   for NODE in $Work; do
     scp /usr/local/bin/kubelet "$NODE":/usr/local/bin/
     scp /usr/local/bin/kube-proxy "$NODE":/usr/local/bin/
@@ -458,7 +458,7 @@ EOF
   mv -f etcd*.pem /etc/etcd/ssl
 
   #echo "分发etcd证书"
-  #for NODE in $Master; do
+  #for NODE in $Masters; do
   #    for FILE in etcd-ca-key.pem  etcd-ca.pem  etcd-key.pem  etcd.pem; do
   #    scp /etc/etcd/ssl/${FILE} "$NODE":/etc/etcd/ssl/${FILE}
   #    done
@@ -5274,6 +5274,131 @@ function make_dir() {
   mkdir ~/.kube
 }
 
+function uninstall_k8s() {
+  echo -e "$normal""检测卸载k8s的必要文件"
+  exit_flag=0
+  if [ ! -f "/usr/local/bin/helm" ]; then
+    echo -e "$err""/usr/local/bin/helm文件缺失"
+    exit_flag=1
+  fi
+  if [ ! -f "./coredns.yaml" ]; then
+    echo -e "$err""当前目录下缺少 coredns.yaml 文件"
+    exit_flag=1
+  fi
+  if [ ! -f "./calico.yaml" ]; then
+    echo -e "$err""当前目录下缺少 calico.yaml 文件"
+    exit_flag=1
+  fi
+  if [[ $exit_flag == 1 ]]; then
+    exit 1
+  else
+    echo -e "$normal""uninstall文件检测通过"
+  fi
+
+  echo -e "$normal""开始卸载openebs"
+  helm uninstall openebs -n kube-system
+  sleep 5
+  while true; do
+    if kubectl get all -A | grep openebs &>/dev/null; then
+      echo -e "$wait""等待openebs容器卸载完成..."
+      kubectl get pods -n kube-system -o wide
+      sleep 20
+    else
+      echo -e "$normal""openebs服务已成功卸载"
+      kubectl get pods -n kube-system -o wide
+      break
+    fi
+    ((count+=1))
+    if [ "$count" -gt 10 ]; then
+      echo -e "$warn""已等待$((20 * count + 5))s,时间过长,请考虑手动排错"
+    fi
+  done
+
+  echo -e "$normal""开始卸载coredns"
+  kubectl delete -f coredns.yaml
+  sleep 5
+  while true; do
+    if kubectl get all -A | grep coredns &>/dev/null; then
+      echo -e "$wait""等待coredns容器卸载完成..."
+      kubectl get pods -n kube-system -o wide
+      sleep 20
+    else
+      echo -e "$normal""coredns服务已成功卸载"
+      kubectl get pods -n kube-system -o wide
+      break
+    fi
+    ((count+=1))
+    if [ "$count" -gt 10 ]; then
+      echo -e "$warn""已等待$((20 * count + 5))s,时间过长,请考虑手动排错"
+    fi
+  done
+
+  echo -e "$normal""开始卸载calico"
+  kubectl delete -f calico.yaml
+  sleep 5
+  while true; do
+    if kubectl get all -A | grep calico &>/dev/null; then
+      echo -e "$wait""等待calico容器卸载完成..."
+      kubectl get pods -n kube-system -o wide
+      sleep 20
+    else
+      echo -e "$normal""calico服务已成功卸载"
+      kubectl get pods -n kube-system -o wide
+      break
+    fi
+    ((count+=1))
+    if [ "$count" -gt 10 ]; then
+      echo -e "$warn""已等待$((20 * count + 5))s,时间过长,请考虑手动排错"
+    fi
+  done
+
+  for HOST in $k8s_all; do
+    echo -e "$normal""停止$HOST kube-proxy"
+    ssh root@"$HOST" "systemctl stop kube-proxy;systemctl disable kube-proxy"
+
+    echo -e "$normal""停止$HOST kubelet"
+    ssh root@"$HOST" "systemctl stop kubelet;systemctl disable kubelet"
+
+    echo -e "$normal""停止$HOST containerd"
+    ssh root@"$HOST" "systemctl stop containerd;systemctl disable containerd"
+  done
+
+  for HOST in $Masters; do
+    echo -e "$normal""停止$HOST kube-scheduler"
+    ssh root@"$HOST" "systemctl stop kube-scheduler;systemctl disable kube-scheduler"
+
+    echo -e "$normal""停止$HOST kube-controller-manager"
+    ssh root@"$HOST" "systemctl stop kube-controller-manager;systemctl disable kube-controller-manager"
+
+    echo -e "$normal""停止$HOST kube-apiserver"
+    ssh root@"$HOST" "systemctl stop kube-apiserver;systemctl disable kube-apiserver"
+
+    echo -e "$normal""停止$HOST etcd"
+    ssh root@"$HOST" "systemctl stop etcd;systemctl disable etcd"
+  done
+
+  sleep 3
+
+  for HOST in $k8s_all; do
+    rm -rf ~/.kube/
+    rm -rf /etc/kubernetes/
+    rm -rf /etc/systemd/system/kubelet.service.d
+    rm -rf /etc/systemd/system/kubelet.service
+    rm -rf /usr/bin/kube*
+    rm -rf /etc/cni
+    rm -rf /opt/cni
+    rm -rf /var/lib/etcd
+    rm -rf /var/lib/kube*
+    rm -rf /var/etcd
+    rm -rf /etc/systemd/system/kubelet.service
+    rm -rf /etc/systemd/system/kube*
+    rm -rf /etc/etcd/
+    echo -e "$normal""已清空$HOST k8s相关的目录"
+  done
+
+  echo -e "$normal""k8s已清除"
+}
+
 echo "#####################################################################"
 echo -e "#           kubernetes一键安装脚本"
 echo -e "# 作者: cosmoplat"
@@ -5295,9 +5420,15 @@ echo "     -->安装etcd
      -->安装kube-apiserver、kubectl、kube-controller-manager、kube-scheduler
      -->安装kubelet、kube-proxy
      -->安装calico、coredns"
+echo -e "3.""[\033[33m卸载二进制安装k8s\033[0m]"
+echo "     -->卸载openebs
+     -->卸载calico、coredns
+     -->停止kubelet、kube-proxy
+     -->停止kube-apiserver、kube-controller-manager、kube-scheduler、etcd、containerd
+     -->删除k8s相关目录"
 echo " -------------"
 echo "  0.退出"
-read -rp "请选择目标[1/2/0]:" cosmoplat
+read -rp "请选择目标[1/2/3/0]:" cosmoplat
 case $cosmoplat in
 0)
   #----退出----
@@ -5334,6 +5465,10 @@ case $cosmoplat in
   #----安装k8s应用----
   init_k8s_pod
   echo -e "$normal"init_k8s_pod finished
+  ;;
+3)
+  #----卸载k8s----
+  uninstall_k8s
   ;;
 *)
   echo -e "$err""未选择正确的操作,退出"
