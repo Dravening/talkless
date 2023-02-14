@@ -5119,6 +5119,46 @@ EOF
       echo -e "$warn""已等待$((20 * count + 30))s,时间过长,请考虑手动排错"
     fi
   done
+
+  echo -e "$normal""准备部署默认存储类"
+  tar -zxvf ./package/helm-v3.11.0-linux-amd64.tar.gz
+  mv linux-amd64/helm /usr/local/bin/helm
+  if [ ! -f "./package/openebs-3.3.1.tgz" ]; then
+    echo -e "$warn""未检测到./package/openebs-3.3.1.tgz文件，即将自动下载，请确定网络环境"
+    helm repo add openebs https://openebs.github.io/charts
+    helm repo update
+    helm pull openebs/openebs --version "v3.3.1" -d ./package
+  else
+    echo -e "$normal""已检测到helm包./package/openebs-3.3.1.tgz"
+  fi
+
+  helm install openebs --namespace kube-system ./package/openebs-3.3.1.tgz
+  sleep 30
+
+  while true; do
+    # 这里要查询不是Running状态的pod, 如"ContainerCreating","Init:0/3,"PodInitializing","0/1 Running"
+    if kubectl get pods -n kube-system | grep openebs | grep -E 'ContainerCreating|0/1' &>/dev/null; then
+      echo -e "$wait""等待openebs容器部署完成..."
+      kubectl get pods -n kube-system -o wide
+      sleep 20
+    else
+      echo -e "$normal""openebs服务已成功启动"
+      kubectl get pods -n kube-system -o wide
+      break
+    fi
+    ((count+=1))
+    if [ "$count" -gt 10 ]; then
+      echo -e "$warn""已等待$((20 * count + 30))s,时间过长,请考虑手动排错"
+    fi
+  done
+
+  kubectl patch storageclass openebs-hostpath -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+  if kubectl get sc | grep "openebs-hostpath (default)" &>/dev/null; then
+    echo -e "$normal""默认存储类配置成功"
+  else
+    echo -e "$err""默认存储类配置失败"
+    exit 1
+  fi
 }
 
 function menu() {
@@ -5131,6 +5171,7 @@ function menu() {
   echo -e "# wget https://github.com/containerd/containerd/releases/download/v1.6.1/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -P ./package/"
   echo -e "# wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.amd64 -P ./package/"
   echo -e "# wget https://github.com/etcd-io/etcd/releases/download/v3.5.2/etcd-v3.5.2-linux-amd64.tar.gz -P ./package/"
+  echo -e "# wget https://get.helm.sh/helm-v3.11.0-linux-amd64.tar.gz -P ./package/"
   echo -e "# wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64 -P ./package/"
   echo -e "# wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64 -P ./package/"
   echo -e "# wget https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64 -P ./package/"
@@ -5153,6 +5194,7 @@ function menu() {
     wget https://github.com/containerd/containerd/releases/download/v1.6.1/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -P ./package/
     wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.amd64 -P ./package/
     wget https://github.com/etcd-io/etcd/releases/download/v3.5.2/etcd-v3.5.2-linux-amd64.tar.gz -P ./package/
+    wget https://get.helm.sh/helm-v3.11.0-linux-amd64.tar.gz -P ./package/
     wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64 -P ./package/
     wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64 -P ./package/
     wget https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64 -P ./package/
@@ -5175,12 +5217,20 @@ function menu() {
     exit_flag=1
   fi
   if [ ! -f "./package/runc.amd64" ]; then
-    echo -e "$warn""当前package目录下缺少 runc.amd64 文件"
-    # exit_flag不修改
+    echo -e "$err""当前package目录下缺少 runc.amd64 文件"
+    exit_flag=1
   fi
   if [ ! -f "./package/etcd-v3.5.2-linux-amd64.tar.gz" ]; then
     echo -e "$err""当前package目录下缺少 etcd-v3.5.2-linux-amd64.tar.gz 文件"
     exit_flag=1
+  fi
+  if [ ! -f "./package/helm-v3.11.0-linux-amd64.tar.gz" ]; then
+    echo -e "$err""当前package目录下缺少 helm-v3.11.0-linux-amd64.tar.gz 文件"
+    exit_flag=1
+  fi
+  if [ ! -f "./package/openebs-3.3.1.tgz" ]; then
+    echo -e "$warn""当前package目录下缺少 openebs-3.3.1.tgz 文件, 脚本可以自动下载"
+    #exit_flag
   fi
   if [ ! -f "./package/cfssl_linux-amd64" ]; then
     echo -e "$err""当前package目录下缺少 cfssl_linux-amd64 文件"
