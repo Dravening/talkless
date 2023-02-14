@@ -4654,9 +4654,9 @@ spec:
             # Auto-detect the BGP IP address.
             - name: IP
               value: "autodetect"
-            # 如果需要手动指定网卡
-            # - name: IP_AUTODETECTION_METHOD
-            #   value: "interface=eth0"
+            # 如果需要手动指定网卡------------------------------------------------------------------------------------------
+            - name: IP_AUTODETECTION_METHOD
+              value: "interface=eth0"
             # Enable IPIP
             - name: CALICO_IPV4POOL_IPIP
               value: "Always"
@@ -5161,8 +5161,8 @@ function menu() {
     echo -e "$normal""执行依赖包检测"
     ;;
   *)
-    echo -e "$normal""未选择正确的操作,退出"
-    exit 0
+    echo -e "$err""未选择正确的操作,退出"
+    exit 1
     ;;
   esac
   exit_flag=0
@@ -5234,17 +5234,17 @@ echo -e "# 该脚本已适配centos7.9"
 echo "####################################################################"
 echo " -------------"
 echo -e "1.""[\033[33m优化系统内核\033[0m]"
-echo "  -->配置host文件
-        -->配置ssh免密登录
-        -->配置系统内核参数
-        -->升级系统内核(会重启主机)"
+echo -e "     -->配置host文件
+     -->配置ssh免密登录
+     -->配置系统内核参数
+     -->升级系统内核([\033[31m会重启主机\033[0m])"
 echo " -------------"
-echo -e "2.""[\033[33二进制安装k8s\033[0m]"
-echo "  -->安装etcd
-        -->安装containerd
-        -->安装kube-apiserver、kubectl、kube-controller-manager、kube-scheduler
-        -->安装kubelet、kube-proxy
-        -->安装calico、coredns"
+echo -e "2.""[\033[33m二进制安装k8s\033[0m]"
+echo "     -->安装etcd
+     -->安装containerd
+     -->安装kube-apiserver、kubectl、kube-controller-manager、kube-scheduler
+     -->安装kubelet、kube-proxy
+     -->安装calico、coredns"
 echo " -------------"
 echo "  0.退出"
 read -rp "请选择目标[1/2/0]:" cosmoplat
@@ -5286,7 +5286,7 @@ case $cosmoplat in
   echo -e "$normal"init_k8s_pod finished
   ;;
 *)
-  echo -e "$normal""未选择正确的操作,退出"
-  exit 0
+  echo -e "$err""未选择正确的操作,退出"
+  exit 1
   ;;
 esac
