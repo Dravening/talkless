@@ -1042,7 +1042,7 @@ function init_k8s_pod() {
   done
 
   echo -e "$normal""启动coreDNS容器"
-  cat >coredns.yaml <<"EOF"
+  cat > ./package/coredns.yaml <<"EOF"
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -1243,7 +1243,7 @@ spec:
     protocol: TCP
 EOF
 
-  kubectl apply -f coredns.yaml
+  kubectl apply -f ./package/coredns.yaml
   echo -e "$normal""正在判断coreDNS容器状态"
   echo -e "$normal""根据网络情况不同，可能需要等待2min-5min不等"
   count=0
