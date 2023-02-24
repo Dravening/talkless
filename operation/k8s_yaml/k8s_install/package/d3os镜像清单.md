@@ -1,3 +1,12 @@
+镜像清单
+
+| 序号 | 名称                                        | 命令                                                         |
+| ---- | ------------------------------------------- | ------------------------------------------------------------ |
+| 1    | kubernetes-server-linux-amd64.tar.gz        | wget https://dl.k8s.io/v1.20.4/kubernetes-server-linux-amd64.tar.gz |
+| 2    | cri-containerd-cni-1.6.1-linux-amd64.tar.gz | wget https://github.com/containerd/containerd/releases/download/v1.6.1/cri-containerd-cni-1.6.1-linux-amd64.tar.gz |
+
+
+
 中间件
 
 | 序号 | 地址                                                   | 进度 |
