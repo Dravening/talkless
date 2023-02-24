@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # 警告提示符[ERROR]
-export err="[\033[31mERROR\033[0m]"
-export warn="[\033[33mWARN\033[0m]"
-export wait="[\033[33mWAITING\033[0m]"
-export normal="[\033[32mNORMAL\033[0m]"
+err="[\033[31mERROR\033[0m]"
+warn="[\033[33mWARN\033[0m]"
+wait="[\033[33mWAITING\033[0m]"
+normal="[\033[32mNORMAL\033[0m]"
+star="\033[32m(^_^)\033[0m"
 
 # 每个节点的IP
 export k8s_master_ip="10.206.73.143"
@@ -1439,23 +1440,32 @@ function make_dir() {
 
 function init_d3os() {
   echo -e "$normal""开始引导d3os平台(约需要5min)"
-  kubectl apply -f d3os-platform-installer.yaml
+  kubectl apply -f ./package/d3os-platform-installer.yaml
 
-  sleep 1
+  sleep 2
   while true; do
-    # shellcheck disable=SC2016
-    install_log=$(kubectl logs -n kubesphere-system '$(kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}")')
-    if $install_log | grep ClusterConfiguration &>/dev/null; then
-      kubectl apply -f d3os-cluster-configuration.yaml
-      break
+    if kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {}; then
+      if kubectl apply -f ./package/d3os-cluster-configuration.yaml; then
+        break
+      fi
     fi
     sleep 1
   done
 
   sleep 1
-  install_log=$(kubectl logs -n kubesphere-system '$(kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}")')
-  $install_log | sed '/^d3os-platform installation completed$/ Q'
-  echo 'd3os-platform installation completed!'
+  kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^Task .* failed:$\|d3os-platform installation completed/ Q'
+
+  while true; do
+    if kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} | grep 'd3os-platform installation completed' &>/dev/null; then
+      echo 'd3os-platform installation completed!'
+      break
+    else
+      kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl delete -n d3os-system pod {};
+      sleep 2
+      kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^d3os-platform installation completed$/ Q'
+    fi
+    sleep 2
+  done
 }
 
 function uninstall_d3os() {
@@ -1505,7 +1515,7 @@ function uninstall_k8s() {
   done
 
   echo -e "$normal""开始卸载coredns"
-  kubectl delete -f coredns.yaml
+  kubectl delete -f ./package/coredns.yaml
   sleep 5
   while true; do
     if kubectl get all -A | grep coredns &>/dev/null; then
@@ -1643,7 +1653,7 @@ echo -e "1.""[\033[33m优化系统内核\033[0m]"
 echo -e "     -->配置host文件
      -->配置ssh免密登录
      -->配置系统内核参数
-     -->升级系统内核([\033[31m会重启主机\033[0m])"
+     -->升级系统内核(\033[31m会重启主机\033[0m)"
 echo -e "2.""[\033[33m二进制安装k8s并引导D3os平台\033[0m]"
 echo "     -->安装etcd
      -->安装containerd
@@ -1651,12 +1661,9 @@ echo "     -->安装etcd
      -->安装kubelet、kube-proxy
      -->安装calico、coredns
      -->安装D3os平台"
-echo -e "3.""[\033[33m卸载二进制安装k8s\033[0m]"
-echo "     -->卸载openebs
-     -->卸载calico、coredns
-     -->停止kubelet、kube-proxy
-     -->停止kube-apiserver、kube-controller-manager、kube-scheduler、etcd、containerd
-     -->删除k8s相关目录"
+echo -e "3.""[\033[33m卸载D3OS\033[0m]"
+echo "     -->卸载D3OS工业操作系统
+     -->卸载二进制k8s集群(可选)"
 echo -e "0.""[\033[33m退出\033[0m]"
 echo "     -->退出脚本"
 read -rp "请选择目标[1/2/3/0]:" cosmoplat
@@ -1671,7 +1678,7 @@ case $cosmoplat in
   echo -e "$normal"set_local finished
   init_os
   echo -e "$normal"init_os finished
-  echo -e "$err""脚本执行完毕*_*"
+  echo -e "$star""脚本执行完毕""$star"
   ;;
 2)
   #----目录----
@@ -1701,12 +1708,12 @@ case $cosmoplat in
   #----安装D3OS平台
   init_d3os
   echo -e "$normal"init_d3os finished
-  echo -e "$err""脚本执行完毕*_*"
+  echo -e "$star""脚本执行完毕""$star"
   ;;
 3)
   #----卸载k8s----
   uninstall
-  echo -e "$err""脚本执行完毕*_*"
+  echo -e "$star""脚本执行完毕""$star"
   ;;
 *)
   echo -e "$err""未选择正确的操作,退出"
