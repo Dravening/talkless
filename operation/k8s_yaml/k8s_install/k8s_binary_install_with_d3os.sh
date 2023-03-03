@@ -574,7 +574,7 @@ EOF
 
   echo -e "$normal""配置主机$master api-server配置文件"
   cat >/etc/kubernetes/kube-apiserver.conf <<EOF
-KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
+KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
   --anonymous-auth=false \
   --bind-address=$k8s_master_ip \
   --secure-port=6443 \
@@ -1453,7 +1453,7 @@ function init_d3os() {
   done
 
   sleep 1
-  kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^Task .* failed:$\|d3os-platform installation completed/ Q'
+  kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^Task .* failed:\|d3os-platform installation completed/ Q'
 
   while true; do
     if kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} | grep 'd3os-platform installation completed' &>/dev/null; then
@@ -1462,7 +1462,7 @@ function init_d3os() {
     else
       kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl delete -n d3os-system pod {};
       sleep 2
-      kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^d3os-platform installation completed$/ Q'
+      kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^Task .* failed:\|d3os-platform installation completed/ Q'
     fi
     sleep 2
   done

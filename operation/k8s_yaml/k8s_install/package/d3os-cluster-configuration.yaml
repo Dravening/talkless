@@ -89,7 +89,7 @@ spec:
       type: none # Specify "weave-scope" for this field to enable Service Topology. "none" means that Service Topology is disabled.
   openpitrix: # An App Store that is accessible to all platform tenants. You can use it to manage apps across their entire lifecycle.
     store:
-      enabled: false # Enable or disable the d3os App Store.
+      enabled: true # Enable or disable the d3os App Store.
   servicemesh:         # (0.3 Core, 300 MiB) Provide fine-grained traffic management, observability and tracing, and visualized traffic topology.
     enabled: false     # Base component (pilot). Enable or disable d3os Service Mesh (Istio-based).
   kubeedge:          # Add edge nodes to your cluster and deploy workloads on edge nodes.
