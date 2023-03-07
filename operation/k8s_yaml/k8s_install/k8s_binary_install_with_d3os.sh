@@ -531,6 +531,14 @@ EOF
   systemctl daemon-reload
   systemctl enable etcd
   systemctl start etcd
+
+  cat >>~/.bashrc << EOF
+export ETCDCTL_API=3
+alias etcdctl='etcdctl --endpoints=https://[$k8s_master_ip]:2379 --cacert=/etc/kubernetes/pki/etcd/ca.pem --cert=/etc/kubernetes/pki/etcd/etcd.pem --key=/etc/kubernetes/pki/etcd/etcd-key.pem'
+EOF
+
+  # shellcheck source=/root/.bashrc
+  source ~/.bashrc
 }
 
 function init_k8s_master() {
