@@ -1,38 +1,36 @@
 #!/bin/bash
 
+# 服务器密码统一为cosmo
+export passwd="cosmo"
+# 默认内网网卡
+export nic="eth0"
+
+# IP 注意k8s_master_ips的第一个ip一定要是脚本当前运行所在机器的ip
+k8s_master_ips=("10.206.73.143")
+k8s_master_names=("k8s-master")
+
+k8s_node_ips=("10.206.73.136" "10.206.73.137" "10.206.73.138")
+k8s_node_names=("k8s-node01" "k8s-node02" "k8s-node03")
+
+# =====================================================================================================================
+# 自动计算总共资源
+k8s_all_ips=("${k8s_master_ips[@]}" "${k8s_node_ips[@]}")
+k8s_all_names=("${k8s_master_names[@]}" "${k8s_node_names[@]}")
+node_num_count=${#k8s_all_ips[@]}
+k8s_other_ips=k8s_all_ips
+unset 'k8s_other_ips[0]'
+k8s_master_ip="k8s_master_ips[0]"
+k8s_master_name="k8s_master_names[0]"
+
 # 警告提示符[ERROR]
 export err="[\033[31mERROR\033[0m]"
 export warn="[\033[33mWARN\033[0m]"
 export wait="[\033[33mWAITING\033[0m]"
 export normal="[\033[32mNORMAL\033[0m]"
 
-# 每个节点的IP
-export k8s_master_ip="10.206.73.143"
-export k8s_node01_ip="10.206.73.136"
-export k8s_node02_ip="10.206.73.137"
-export k8s_node03_ip="10.206.73.138"
-
-# 服务器密码统一为cosmo
-export passwd="cosmo"
-# 默认网卡
-export nic="eth0"
-
-export master="k8s-master"
-export node01="k8s-node01"
-export node02="k8s-node02"
-export node03="k8s-node03"
-
-export k8s_other="k8s-node01 k8s-node02 k8s-node03"
-export k8s_all="k8s-master k8s-node01 k8s-node02 k8s-node03"
-export Masters='k8s-master'
-export Work='k8s-node01 k8s-node02 k8s-node03'
-k8s_all_ip=("10.206.73.143" "10.206.73.136" "10.206.73.137" "10.206.73.138")
-node_num_count=4
-
-# =====================================================================================================================
 function ping_test() {
   a=()
-  for ip in $k8s_all; do
+  for ip in "${k8s_all_ips[@]}"; do
     if ! ping -c 2 "$ip" >/dev/null; then
       echo -e "$err" cant connect with "${a[*]}"
       a+=("$ip")
@@ -68,15 +66,16 @@ function set_local() {
   echo 本机系统"$os"
 
   echo "本机写入hosts配置文件"
-  cat >/etc/hosts <<EOF
-127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
-::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
-
-$k8s_master_ip $master
-$k8s_node01_ip $node01
-$k8s_node02_ip $node02
-$k8s_node03_ip $node03
-EOF
+  for(( i=0; i<"$node_num_count"; i++ )); do
+    name="${k8s_all_names[i]}"
+    ip="${k8s_all_ips[i]}"
+    if ! grep "$name" /etc/hosts >/dev/null; then
+      echo "$name $ip" >> /etc/hosts
+    else
+      sed -i "/$name/d" /etc/hosts
+      echo "$name $ip" >> /etc/hosts
+    fi
+  done
 
   echo "本机配置ssh免密..."
   if [ -e /root/.ssh/id_rsa ]; then
@@ -86,47 +85,56 @@ EOF
       rm -f /root/.ssh/id_rsa
       ssh-keygen -f /root/.ssh/id_rsa -P ''
       export SSHPASS="$passwd"
-      for HOST in $k8s_all; do
-        sshpass -e ssh-copy-id -o StrictHostKeyChecking=no "$HOST"
+      for ip in "${k8s_all_ips[@]}"; do
+        sshpass -e ssh-copy-id -o StrictHostKeyChecking=no "$ip"
       done
       ;;
     *)
       exit 0
       ;;
     esac
+  else
+    ssh-keygen -f /root/.ssh/id_rsa -P ''
+    export SSHPASS="$passwd"
+    for ip in "${k8s_all_ips[@]}"; do
+      sshpass -e ssh-copy-id -o StrictHostKeyChecking=no "$ip"
+    done
   fi
 }
 
 function init_os() {
-  for HOST in $k8s_all; do
+  for ip in "${k8s_all_ips[@]}"; do
     {
-      #echo "配置主机 $HOST yum源"
+      #echo "配置主机 $ip yum源"
       #ssh root@"$HOST" "sed -e 's|^mirrorlist=|#mirrorlist=|g' -e 's|^#baseurl=http://mirror.centos.org/\$contentdir|baseurl=https://mirrors.tuna.tsinghua.edu.cn/centos|g' -i.bak /etc/yum.repos.d/CentOS-*.repo"
 
-      echo -e "$normal""安装$HOST 基础环境"
-      ssh root@"$HOST" "yum update -y ; yum -y install wget jq psmisc vim net-tools nfs-utils telnet yum-utils device-mapper-persistent-data lvm2 git network-scripts tar curl chrony -y"
-      ssh root@"$HOST" "yum install epel* -y"
-      ssh root@"$HOST" "sed -e 's!^metalink=!#metalink=!g' -e 's!^#baseurl=!baseurl=!g' -e 's!//download\.fedoraproject\.org/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!//download\.example/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!http://mirrors!https://mirrors!g' -i /etc/yum.repos.d/epel*.repo"
+      echo -e "$normal""安装$ip 基础环境"
+      ssh root@"$ip" "yum update -y ; yum -y install wget jq psmisc vim net-tools nfs-utils telnet yum-utils device-mapper-persistent-data lvm2 git network-scripts tar curl chrony -y"
+      ssh root@"$ip" "yum install epel* -y"
+      ssh root@"$ip" "sed -e 's!^metalink=!#metalink=!g' -e 's!^#baseurl=!baseurl=!g' -e 's!//download\.fedoraproject\.org/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!//download\.example/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!http://mirrors!https://mirrors!g' -i /etc/yum.repos.d/epel*.repo"
 
       wait
-    } >>./log/"$HOST".txt &
+    } >>./log/"$ip".txt &
   done
   wait
 
-  for HOST in $k8s_all; do
+  for HOST in "${k8s_all_names[@]}"; do
     {
       echo -e "$normal""配置 $HOST 主机名"
       ssh root@"$HOST" "hostnamectl set-hostname $HOST"
-      echo -e "$normal""在主机 $HOST 配置hosts配置..."
-      ssh root@"$HOST" "cat > /etc/hosts <<EOF
-127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
-::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
 
-$k8s_master_ip $master
-$k8s_node01_ip $node01
-$k8s_node02_ip $node02
-$k8s_node03_ip $node03
-EOF"
+      echo -e "$normal""在主机 $HOST 配置hosts配置..."
+      for(( i=0; i<"$node_num_count"; i++ )); do
+        name=${k8s_all_names[i]}
+        ip=${k8s_all_ips[i]}
+        # shellcheck disable=SC2029
+        ssh root@"$HOST" "if ! grep $name /etc/hosts >/dev/null; then
+  echo $name $ip >> /etc/hosts
+else
+  sed -i /$name/d /etc/hosts
+  echo $name $ip >> /etc/hosts
+fi"
+      done
 
       echo -e "$normal""关闭$HOST 防火墙"
       ssh root@"$HOST" "systemctl disable --now firewalld"
@@ -216,7 +224,7 @@ EOF"
   done
   wait
 
-  for HOST in $k8s_other; do
+  for HOST in "${k8s_other_ips[@]}"; do
     echo -e "$normal""重启$HOST"
     ssh root@"$HOST" "reboot"
   done
@@ -228,7 +236,7 @@ EOF"
       echo -e "$normal""服务器重启完成"
       break
     else
-      echo -e "$normal""未启动服务器：$ping_res ，等待20秒..."
+      echo -e "$normal""未启动服务器: $ping_res ，等待20秒..."
     fi
     sleep 20
   done
@@ -245,7 +253,7 @@ EOF"
 }
 
 function init_containerd() {
-  for HOST in $k8s_all; do
+  for HOST in "${k8s_all_names[@]}"; do
     {
       echo -e "$normal""配置主机$HOST Containerd"
       ssh root@"$HOST" 'cat >/etc/containerd/config.toml<<EOF
@@ -371,7 +379,7 @@ function init_local() {
 
   echo -e "$normal""将所需组件发送到各k8s节点"
   #for NODE in $Masters; do echo "$NODE"; scp /usr/local/bin/kube{let,ctl,-apiserver,-controller-manager,-scheduler,-proxy} "$NODE":/usr/local/bin/; scp /usr/local/bin/etcd* $NODE:/usr/local/bin/; done
-  for NODE in $Work; do
+  for NODE in "${k8s_node_names[@]}"; do
     scp /usr/local/bin/kubelet "$NODE":/usr/local/bin/
     scp /usr/local/bin/kube-proxy "$NODE":/usr/local/bin/
     scp ./package/cri-containerd-cni-1.6.1-linux-amd64.tar.gz "$NODE":~
@@ -379,7 +387,7 @@ function init_local() {
   done
   wait
 
-  for NODE in $Work; do
+  for NODE in "${k8s_node_names[@]}"; do
     ssh root@"$NODE" "tar -xf ~/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -C /"
     scp /usr/local/sbin/runc "$NODE":/usr/local/sbin/runc
     ssh root@"$NODE" "chmod +x /usr/local/sbin/runc"
@@ -483,7 +491,7 @@ ETCD_INITIAL_CLUSTER_TOKEN='etcd-cluster'
 ETCD_INITIAL_CLUSTER_STATE='new'
 EOF
 
-  echo "配置主机$master etcd service文件"
+  echo "配置主机$k8s_master_name etcd service文件"
   cat >/etc/systemd/system/etcd.service <<EOF
 [Unit]
 Description=Etcd Server
@@ -512,7 +520,7 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 EOF
 
-  echo "测试$master etcd"
+  echo "测试$k8s_master_name etcd"
   mkdir -p /etc/kubernetes/pki/etcd
   ln -s /etc/etcd/ssl/* /etc/kubernetes/pki/etcd/
   systemctl daemon-reload
@@ -522,17 +530,18 @@ EOF
 
 function init_k8s_master() {
   # ----kube-apiserver----
-  echo -e "$normal""配置主机$master api-server证书及token文件"
+  echo -e "$normal""配置主机$k8s_master_name api-server证书及token文件"
   cat >kube-apiserver-csr.json <<EOF
 {
 "CN": "kubernetes",
   "hosts": [
     "127.0.0.1",
-    "$k8s_master_ip",
-    "$k8s_node01_ip",
-    "$k8s_node02_ip",
-    "$k8s_node03_ip",
-    "10.96.0.1",
+EOF
+  for ip in "${k8s_all_ips[@]}"; do
+    echo "    \"$ip\"," >> kube-apiserver-csr.json
+  done
+
+  echo '    "10.96.0.1",
     "kubernetes",
     "kubernetes.default",
     "kubernetes.default.svc",
@@ -552,14 +561,14 @@ function init_k8s_master() {
       "OU": "CN"
     }
   ]
-}
-EOF
+}' >> kube-apiserver-csr.json
+
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes kube-apiserver-csr.json | cfssljson -bare /etc/kubernetes/pki/kube-apiserver
   cat >/etc/kubernetes/token.csv <<EOF
 $(head -c 16 /dev/urandom | od -An -t x | tr -d ' '),kubelet-bootstrap,10001,"system:kubelet-bootstrap"
 EOF
 
-  echo -e "$normal""配置主机$master api-server配置文件"
+  echo -e "$normal""配置主机$k8s_master_name api-server配置文件"
   cat >/etc/kubernetes/kube-apiserver.conf <<EOF
 KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
   --anonymous-auth=false \
@@ -622,7 +631,7 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 EOF
-  echo -e "$normal""配置主机$master api-server开机自启"
+  echo -e "$normal""配置主机$k8s_master_name api-server开机自启"
   systemctl daemon-reload && systemctl enable --now kube-apiserver
 
   # ----kubectl----
@@ -649,7 +658,7 @@ EOF
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes admin-csr.json | cfssljson -bare /etc/kubernetes/pki/admin
 
   # ----kubeconfig----
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://$k8s_master_ip:6443 --kubeconfig=kube.config
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=kube.config
   kubectl config set-credentials kubernetes-admin --client-certificate=/etc/kubernetes/pki/admin.pem --client-key=/etc/kubernetes/pki/admin-key.pem --embed-certs=true --kubeconfig=kube.config
   kubectl config set-context kubernetes --cluster=kubernetes --user=kubernetes-admin --kubeconfig=kube.config
   kubectl config use-context kubernetes --kubeconfig=kube.config
@@ -660,7 +669,7 @@ EOF
   export KUBECONFIG=$HOME/.kube/config
 
   # ----kube-controller-manager----
-  echo -e "$normal""配置主机$master kube-controller-manager配置文件"
+  echo -e "$normal""配置主机$k8s_master_name kube-controller-manager配置文件"
   cat >kube-controller-manager-csr.json <<EOF
 {
   "CN": "system:kube-controller-manager",
@@ -685,7 +694,7 @@ EOF
 EOF
 
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes kube-controller-manager-csr.json | cfssljson -bare /etc/kubernetes/pki/kube-controller-manager
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://$k8s_master_ip:6443 --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
   kubectl config set-credentials system:kube-controller-manager --client-certificate=/etc/kubernetes/pki/kube-controller-manager.pem --client-key=/etc/kubernetes/pki/kube-controller-manager-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
   kubectl config set-context system:kube-controller-manager --cluster=kubernetes --user=system:kube-controller-manager --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
   kubectl config use-context system:kube-controller-manager --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
@@ -732,11 +741,11 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
-  echo -e "$normal""配置主机$master kube-controller-manager开机自启"
+  echo -e "$normal""配置主机$k8s_master_name kube-controller-manager开机自启"
   systemctl daemon-reload && systemctl enable --now kube-controller-manager
 
   # kube-scheduler
-  echo -e "$normal""配置主机$master kube-scheduler配置文件"
+  echo -e "$normal""配置主机$k8s_master_name kube-scheduler配置文件"
   cat >kube-scheduler-csr.json <<EOF
 {
   "CN": "system:kube-scheduler",
@@ -760,7 +769,7 @@ EOF
 }
 EOF
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes kube-scheduler-csr.json | cfssljson -bare /etc/kubernetes/pki/kube-scheduler
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://$k8s_master_ip:6443 --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
   kubectl config set-credentials system:kube-scheduler --client-certificate=/etc/kubernetes/pki/kube-scheduler.pem --client-key=/etc/kubernetes/pki/kube-scheduler-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
   kubectl config set-context system:kube-scheduler --cluster=kubernetes --user=system:kube-scheduler --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
   kubectl config use-context system:kube-scheduler --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
@@ -789,16 +798,16 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
-  echo -e "$normal""配置主机$master kube-scheduler开机自启"
+  echo -e "$normal""配置主机$k8s_master_name kube-scheduler开机自启"
   systemctl daemon-reload
   systemctl enable --now kube-scheduler
 }
 
 function init_k8s_other() {
   #kubelet
-  echo -e "$normal""配置主机$master kubelet配置文件"
+  echo -e "$normal""配置主机$k8s_master_name kubelet配置文件"
   BOOTSTRAP_TOKEN=$(awk -F "," '{print $1}' /etc/kubernetes/token.csv)
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://$k8s_master_ip:6443 --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
   kubectl config set-credentials kubelet-bootstrap --token="$BOOTSTRAP_TOKEN" --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
   kubectl config set-context default --cluster=kubernetes --user=kubelet-bootstrap --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
   kubectl config use-context default --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
@@ -806,7 +815,7 @@ function init_k8s_other() {
   kubectl create clusterrolebinding cluster-system-anonymous --clusterrole=cluster-admin --user=kubelet-bootstrap
   kubectl create clusterrolebinding kubelet-bootstrap --clusterrole=system:node-bootstrapper --user=kubelet-bootstrap --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
 
-  for HOST in "${k8s_all_ip[@]}"; do
+  for HOST in "${k8s_all_ips[@]}"; do
     ssh root@"$HOST" "cat > /etc/kubernetes/kubelet.json << EOF
 {
   \"kind\": \"KubeletConfiguration\",
@@ -911,7 +920,7 @@ EOF
 
   systemctl daemon-reload && systemctl enable --now kubelet
 
-  for HOST in $k8s_other; do
+  for HOST in "${k8s_other_ips[@]}"; do
     scp /etc/kubernetes/kubelet-bootstrap.kubeconfig "$HOST":/etc/kubernetes/
     #scp /etc/kubernetes/kubelet.json "$HOST":/etc/kubernetes/;
     scp /etc/kubernetes/pki/ca.pem "$HOST":/etc/kubernetes/pki
@@ -941,12 +950,12 @@ EOF
 }
 EOF
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes kube-proxy-csr.json | cfssljson -bare /etc/kubernetes/pki/kube-proxy
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://$k8s_master_ip:6443 --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
   kubectl config set-credentials kube-proxy --client-certificate=/etc/kubernetes/pki/kube-proxy.pem --client-key=/etc/kubernetes/pki/kube-proxy-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
   kubectl config set-context default --cluster=kubernetes --user=kube-proxy --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
   kubectl config use-context default --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
 
-  for HOST in "${k8s_all_ip[@]}"; do
+  for HOST in "${k8s_all_ips[@]}"; do
     ssh root@"$HOST" "cat > /etc/kubernetes/kube-proxy.yaml << EOF
 \"apiVersion\": \"kubeproxy.config.k8s.io/v1alpha1\"
 \"bindAddress\": \"$HOST\"
@@ -985,7 +994,7 @@ EOF
   systemctl daemon-reload
   systemctl enable --now kube-proxy
 
-  for HOST in $k8s_other; do
+  for HOST in "${k8s_other_ips[@]}"; do
     #scp /etc/kubernetes/kube-proxy.yaml "$HOST":/etc/kubernetes/
     scp /etc/kubernetes/kube-proxy.kubeconfig "$HOST":/etc/kubernetes/
     scp /usr/lib/systemd/system/kube-proxy.service "$HOST":/usr/lib/systemd/system/
@@ -1332,7 +1341,7 @@ function menu() {
      -->安装calico、coredns"
   echo -e "0.""[\033[33m退出\033[0m]"
   echo "     -->退出脚本"
-  read -rp " 请选择目标[1/2/0]：" cosmoplat
+  read -rp " 请选择目标[1/2/0]: " cosmoplat
   case $cosmoplat in
   0)
     exit 0
@@ -1403,7 +1412,7 @@ function menu() {
 }
 
 function make_dir() {
-  for HOST in $k8s_all; do
+  for HOST in "${k8s_all_names[@]}"; do
     {
       echo -e "$normal""创建$HOST目录"
       ssh root@"$HOST" "mkdir -p /etc/cni/net.d"
@@ -1415,7 +1424,7 @@ function make_dir() {
     } >>./log/"$HOST".txt
   done
 
-  for HOST in $master; do
+  for HOST in "${k8s_master_names[@]}"; do
     {
       echo -e "$normal""创建$HOST目录"
       ssh root@"$HOST" "mkdir -p /etc/etcd/ssl"
@@ -1504,7 +1513,7 @@ function uninstall_k8s() {
     fi
   done
 
-  for HOST in $k8s_all; do
+  for HOST in "${k8s_all_names[@]}"; do
     echo -e "$normal""停止$HOST kube-proxy"
     ssh root@"$HOST" "systemctl stop kube-proxy;systemctl disable kube-proxy"
 
@@ -1515,7 +1524,7 @@ function uninstall_k8s() {
     ssh root@"$HOST" "systemctl stop containerd;systemctl disable containerd"
   done
 
-  for HOST in $Masters; do
+  for HOST in "${k8s_master_names[@]}"; do
     echo -e "$normal""停止$HOST kube-scheduler"
     ssh root@"$HOST" "systemctl stop kube-scheduler;systemctl disable kube-scheduler"
 
@@ -1531,7 +1540,7 @@ function uninstall_k8s() {
 
   sleep 3
 
-  for HOST in $k8s_all; do
+  for HOST in "${k8s_all_names[@]}"; do
     ssh root@"$HOST" "rm -rf ~/.kube/"
     ssh root@"$HOST" "rm -rf /etc/kubernetes/"
     ssh root@"$HOST" "rm -rf /etc/systemd/system/kubelet.service.d"

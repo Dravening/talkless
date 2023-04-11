@@ -27,7 +27,7 @@ spec:
       containers:
         - name: es-log 
 #这个镜像里面改了跨域的配置
-          image: registry-edge.cosmoplat.com/kubesphere/my-elasticsearch:7.17.7
+          image: registry.cn-hangzhou.aliyuncs.com/draven_yyz/my-elasticsearch:7.17.7
           imagePullPolicy: IfNotPresent
           securityContext:
             privileged: true
