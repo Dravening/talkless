@@ -8,27 +8,25 @@ normal="[\033[32mNORMAL\033[0m]"
 star="\033[32m(^_^)\033[0m"
 
 # 每个节点的IP
-export k8s_master_ip="10.206.73.143"
-export k8s_node01_ip="10.206.73.136"
-export k8s_node02_ip="10.206.73.137"
-export k8s_node03_ip="10.206.73.138"
+export k8s_master_ip="10.206.68.1"
+export k8s_node01_ip="10.206.68.5"
+export k8s_node02_ip="10.206.68.6"
 
 # 服务器密码统一为cosmo
 export passwd="cosmo"
 # 默认网卡
-export nic="eth0"
+export nic="team0"
 
-export master="k8s-master"
-export node01="k8s-node01"
-export node02="k8s-node02"
-export node03="k8s-node03"
+export master="tcosmo-sh01"
+export node01="tcosmo-sh05"
+export node02="tcosmo-sh06"
 
-export k8s_other="k8s-node01 k8s-node02 k8s-node03"
-export k8s_all="k8s-master k8s-node01 k8s-node02 k8s-node03"
-export Masters='k8s-master'
-export Work='k8s-node01 k8s-node02 k8s-node03'
-k8s_all_ip=("10.206.73.143" "10.206.73.136" "10.206.73.137" "10.206.73.138")
-node_num_count=4
+export k8s_other="tcosmo-sh05 tcosmo-sh06"
+export k8s_all="tcosmo-sh01 tcosmo-sh05 tcosmo-sh06"
+export Masters='tcosmo-sh01'
+export Work='tcosmo-sh05 tcosmo-sh06'
+k8s_all_ip=("10.206.68.1" "10.206.68.5" "10.206.68.6")
+node_num_count=3
 
 # =====================================================================================================================
 function ping_test() {
@@ -88,7 +86,6 @@ function set_local() {
 $k8s_master_ip $master
 $k8s_node01_ip $node01
 $k8s_node02_ip $node02
-$k8s_node03_ip $node03
 EOF
 
   echo "本机配置ssh免密..."
@@ -138,7 +135,6 @@ function init_os() {
 $k8s_master_ip $master
 $k8s_node01_ip $node01
 $k8s_node02_ip $node02
-$k8s_node03_ip $node03
 EOF"
 
       echo -e "$normal""关闭$HOST 防火墙"
@@ -552,7 +548,6 @@ function init_k8s_master() {
     "$k8s_master_ip",
     "$k8s_node01_ip",
     "$k8s_node02_ip",
-    "$k8s_node03_ip",
     "10.96.0.1",
     "kubernetes",
     "kubernetes.default",
@@ -1039,7 +1034,7 @@ function init_k8s_pod() {
   done
 
   echo -e "$normal""启动calico容器"
-  sed "s/interface=eth0/interface=$nic/" ./package/calico.yaml >/dev/null
+  sed -i "s/interface=eth0/interface=$nic/g" ./package/calico.yaml
   kubectl apply -f ./package/calico.yaml
 
   echo -e "$normal""正在判断calico容器状态(可能需要等待2min-12min)"
@@ -1586,6 +1581,15 @@ function uninstall_k8s() {
   done
 
   sleep 3
+
+  for HOST in $k8s_all; do
+    echo -e "$normal""停止$HOST calico网卡"
+    ssh root@"$HOST" "modprobe -r ipip"
+    ssh root@"$HOST" "ip link delete kube-ipvs0"
+    ssh root@"$HOST" "ip link delete cni0"
+  done
+
+  sleep 1
 
   for HOST in $k8s_all; do
     ssh root@"$HOST" "rm -rf ~/.kube/"
