@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
 
+function delete_sure(){
+  cat << eof
+$(echo -e "\033[1;36mNote:\033[0m")
+Delete the d3os cluster, including the module d3os-system d3os-devops-system d3os-monitoring-system d3os-logging-system openpitrix-system.
+eof
+
+read -p "Please reconfirm that you want to delete the d3os cluster.  (yes/no) " ans
+while [[ "x"$ans != "xyes" && "x"$ans != "xno" ]]; do
+    read -p "Please reconfirm that you want to delete the d3os cluster.  (yes/no) " ans
+done
+
+if [[ "x"$ans == "xno" ]]; then
+    exit
+fi
+}
+
+# delete_sure
+
 # delete ks-install
 kubectl delete deploy ks-installer -n d3os-system 2>/dev/null
 

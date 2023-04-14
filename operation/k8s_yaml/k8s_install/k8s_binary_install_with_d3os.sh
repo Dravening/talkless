@@ -8,25 +8,27 @@ normal="[\033[32mNORMAL\033[0m]"
 star="\033[32m(^_^)\033[0m"
 
 # 每个节点的IP
-export k8s_master_ip="10.206.68.1"
-export k8s_node01_ip="10.206.68.5"
-export k8s_node02_ip="10.206.68.6"
+export k8s_master_ip="10.206.73.143"
+export k8s_node01_ip="10.206.73.136"
+export k8s_node02_ip="10.206.73.137"
+export k8s_node03_ip="10.206.73.138"
 
 # 服务器密码统一为cosmo
 export passwd="cosmo"
 # 默认网卡
-export nic="team0"
+export nic="eth0"
 
-export master="tcosmo-sh01"
-export node01="tcosmo-sh05"
-export node02="tcosmo-sh06"
+export master="k8s-master"
+export node01="k8s-node01"
+export node02="k8s-node02"
+export node03="k8s-node03"
 
-export k8s_other="tcosmo-sh05 tcosmo-sh06"
-export k8s_all="tcosmo-sh01 tcosmo-sh05 tcosmo-sh06"
-export Masters='tcosmo-sh01'
-export Work='tcosmo-sh05 tcosmo-sh06'
-k8s_all_ip=("10.206.68.1" "10.206.68.5" "10.206.68.6")
-node_num_count=3
+export k8s_other="k8s-node01 k8s-node02 k8s-node03"
+export k8s_all="k8s-master k8s-node01 k8s-node02 k8s-node03"
+export Masters='k8s-master'
+export Work='k8s-node01 k8s-node02 k8s-node03'
+k8s_all_ip=("10.206.73.143" "10.206.73.136" "10.206.73.137" "10.206.73.138")
+node_num_count=4
 
 # =====================================================================================================================
 function ping_test() {
@@ -86,6 +88,7 @@ function set_local() {
 $k8s_master_ip $master
 $k8s_node01_ip $node01
 $k8s_node02_ip $node02
+$k8s_node03_ip $node03
 EOF
 
   echo "本机配置ssh免密..."
@@ -95,13 +98,13 @@ EOF
     y)
       rm -f /root/.ssh/id_rsa
       ssh-keygen -f /root/.ssh/id_rsa -P ''
+      # sshpass 会使用全局变量SSHPASS作为密码
       export SSHPASS="$passwd"
       for HOST in $k8s_all; do
         sshpass -e ssh-copy-id -o StrictHostKeyChecking=no "$HOST"
       done
       ;;
     *)
-      exit 0
       ;;
     esac
   fi
@@ -114,9 +117,9 @@ function init_os() {
       #ssh root@"$HOST" "sed -e 's|^mirrorlist=|#mirrorlist=|g' -e 's|^#baseurl=http://mirror.centos.org/\$contentdir|baseurl=https://mirrors.tuna.tsinghua.edu.cn/centos|g' -i.bak /etc/yum.repos.d/CentOS-*.repo"
 
       echo -e "$normal""安装$HOST 基础环境"
-      ssh root@"$HOST" "yum update -y ; yum -y install wget jq psmisc vim net-tools nfs-utils telnet yum-utils device-mapper-persistent-data lvm2 git network-scripts tar curl chrony -y"
+      ssh root@"$HOST" "yum update -y; yum -y install wget jq psmisc vim net-tools nfs-utils telnet yum-utils device-mapper-persistent-data lvm2 git network-scripts tar curl chrony -y"
       ssh root@"$HOST" "yum install epel* -y"
-      ssh root@"$HOST" "sed -e 's!^metalink=!#metalink=!g' -e 's!^#baseurl=!baseurl=!g' -e 's!//download\.fedoraproject\.org/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!//download\.example/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!http://mirrors!https://mirrors!g' -i /etc/yum.repos.d/epel*.repo"
+      # ssh root@"$HOST" "sed -e 's!^metalink=!#metalink=!g' -e 's!^#baseurl=!baseurl=!g' -e 's!//download\.fedoraproject\.org/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!//download\.example/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!http://mirrors!https://mirrors!g' -i /etc/yum.repos.d/epel*.repo"
 
       wait
     } >>./log/"$HOST".txt &
@@ -135,6 +138,7 @@ function init_os() {
 $k8s_master_ip $master
 $k8s_node01_ip $node01
 $k8s_node02_ip $node02
+$k8s_node03_ip $node03
 EOF"
 
       echo -e "$normal""关闭$HOST 防火墙"
@@ -158,10 +162,10 @@ EOF"
       ssh root@"$HOST" "cat >> /etc/security/limits.conf <<EOF
 * soft nofile 655360
 * hard nofile 131072
-* soft nproc 655350
+* soft nproc 65535
 * hard nproc 655350
 * seft memlock unlimited
-* hard memlock unlimitedd
+* hard memlock unlimited
 EOF
 ulimit -SHn 65535
 "
@@ -248,7 +252,7 @@ EOF"
     reboot
     ;;
   *)
-    exit 0
+    echo -e "$normal""主节点未重启"
     ;;
   esac
 }
@@ -548,6 +552,7 @@ function init_k8s_master() {
     "$k8s_master_ip",
     "$k8s_node01_ip",
     "$k8s_node02_ip",
+    "$k8s_node03_ip",
     "10.96.0.1",
     "kubernetes",
     "kubernetes.default",
@@ -1473,6 +1478,7 @@ function init_d3os() {
 
 function uninstall_d3os() {
   echo -e "$normal""开始卸载d3os平台"
+  chmod +x ./package/d3os-platform-delete.sh
   ./package/d3os-platform-delete.sh
   echo -e "$normal""d3os平台已完成卸载"
 }
@@ -1497,6 +1503,40 @@ function uninstall_k8s() {
   else
     echo -e "$normal""uninstall文件检测通过"
   fi
+
+  echo -e "$normal""删除所有ns"
+  kubectl get ns | grep -vE "kube-public|kube-system|default|kube-node-lease" | awk 'NR>1' | awk '{print $1}' | xargs -i kubectl delete ns {}
+  sleep 10
+  while true; do
+    # 这里要查询删除ns情况
+    if [ "$(kubectl get ns | grep -vE 'kube-public|kube-system|default|kube-node-lease' | awk 'NR>1' | wc -l)" -eq 0 ]; then
+      echo -e "$normal""k8s ns 删除完毕"
+      kubectl get ns
+      break
+    else
+      echo -e "$wait""等待k8s删除ns..."
+      kubectl get ns
+      sleep 5
+    fi
+  done
+
+  count=0
+  while true; do
+    # 这里要查询pv情况
+    if [ "$(kubectl get pv -A | wc -l)" -eq 0 ]; then
+      echo -e "$normal""k8s pv 删除完毕"
+      kubectl get pv -A
+      break
+    else
+      echo -e "$wait""等待k8s删除pv..."
+      kubectl get pv -A
+      sleep 5
+    fi
+    ((count += 1))
+    if [ "$count" -gt 10 ]; then
+      echo -e "$warn""已等待$((5 * count + 5))s,时间过长,请考虑手动排错"
+    fi
+  done
 
   echo -e "$normal""开始卸载openebs"
   helm 'uninstall' openebs -n kube-system
