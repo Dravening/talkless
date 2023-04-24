@@ -83,10 +83,10 @@ function set_local() {
     name="${k8s_all_names[i]}"
     ip="${k8s_all_ips[i]}"
     if ! grep "$name" /etc/hosts >/dev/null; then
-      echo "$name $ip" >> /etc/hosts
+      echo "$ip $name" >> /etc/hosts
     else
       sed -i "/$name/d" /etc/hosts
-      echo "$name $ip" >> /etc/hosts
+      echo "$ip $name" >> /etc/hosts
     fi
   done
 
@@ -137,10 +137,10 @@ function init_os() {
         ip=${k8s_all_ips[i]}
         # shellcheck disable=SC2029
         ssh root@"$HOST" "if ! grep $name /etc/hosts >/dev/null; then
-  echo $name $ip >> /etc/hosts
+  echo $ip $name >> /etc/hosts
 else
   sed -i /$name/d /etc/hosts
-  echo $name $ip >> /etc/hosts
+  echo $ip $name >> /etc/hosts
 fi"
       done
 
@@ -1719,7 +1719,7 @@ echo "     -->安装etcd
      -->安装kube-apiserver、kubectl、kube-controller-manager、kube-scheduler
      -->安装kubelet、kube-proxy
      -->安装calico、coredns
-     -->安装D3os平台"
+     -->安装D3os平台(可选)"
 echo -e "3.""[\033[33m卸载D3OS\033[0m]"
 echo "     -->卸载D3OS工业操作系统
      -->卸载二进制k8s集群(可选)"
@@ -1764,10 +1764,18 @@ case $cosmoplat in
   init_k8s_pod
   echo -e "$normal"init_k8s_pod finished
 
-  #----安装D3OS平台
-  init_d3os
-  echo -e "$normal"init_d3os finished
-  echo -e "$star""脚本执行完毕""$star"
+  read -rp "引导D3os平台[y/n]" d3os
+  case $d3os in
+  y)
+    #----安装D3OS平台
+    init_d3os
+    echo -e "$normal"init_d3os finished
+    echo -e "$star""脚本执行完毕""$star"
+    ;;
+  *)
+    echo -e "$star""脚本执行完毕""$star"
+    ;;
+  esac
   ;;
 3)
   #----卸载k8s----
