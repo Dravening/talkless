@@ -599,7 +599,7 @@ EOF
     "C": "CN",
     "ST": "Beijing",
     "L": "Beijing",
-    "O": "system:authenticated",
+    "O": "kubemsb",
     "OU": "CN"
   }]
 }
