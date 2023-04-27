@@ -590,18 +590,21 @@ EOF
   echo -e "$normal""配置主机$current_node_name proxy-client证书及token文件"
   cat >proxy-client-csr.json <<EOF
 {
-  "CN": "proxy-client",
+  "CN": "aggregator",
+  "hosts": [],
   "key": {
     "algo": "rsa",
     "size": 2048
   },
-  "names": [{
-    "C": "CN",
-    "ST": "Beijing",
-    "L": "Beijing",
-    "O": "kubemsb",
-    "OU": "CN"
-  }]
+  "names": [
+    {
+      "C": "CN",
+      "ST": "BeiJing",
+      "L": "BeiJing",
+      "O": "system:masters",
+      "OU": "System"
+    }
+  ]
 }
 EOF
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes proxy-client-csr.json | cfssljson -bare /etc/kubernetes/pki/proxy-client
