@@ -604,7 +604,7 @@ EOF
   }]
 }
 EOF
-  cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes proxy-client-csr.json | cfssljson -bare /etc/kubernetes/pki/
+  cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes proxy-client-csr.json | cfssljson -bare /etc/kubernetes/pki/proxy-client
 
   echo -e "$normal""配置主机$current_node_name api-server配置文件"
   cat >/etc/kubernetes/kube-apiserver.conf <<EOF
