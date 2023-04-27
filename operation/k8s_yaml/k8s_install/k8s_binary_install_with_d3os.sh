@@ -551,7 +551,7 @@ function init_k8s_master() {
   echo -e "$normal""配置主机$current_node_name api-server证书及token文件"
   cat >kube-apiserver-csr.json <<EOF
 {
-"CN": "kubernetes",
+  "CN": "kubernetes",
   "hosts": [
     "127.0.0.1",
 EOF
@@ -587,6 +587,25 @@ EOF
 $(head -c 16 /dev/urandom | od -An -t x | tr -d ' '),kubelet-bootstrap,10001,"system:kubelet-bootstrap"
 EOF
 
+  echo -e "$normal""配置主机$current_node_name proxy-client证书及token文件"
+  cat >proxy-client-csr.json <<EOF
+{
+  "CN": "proxy-client",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [{
+    "C": "CN",
+    "ST": "Beijing",
+    "L": "Beijing",
+    "O": "system:authenticated",
+    "OU": "CN"
+  }]
+}
+EOF
+  cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes proxy-client-csr.json | cfssljson -bare /etc/kubernetes/pki/
+
   echo -e "$normal""配置主机$current_node_name api-server配置文件"
   cat >/etc/kubernetes/kube-apiserver.conf <<EOF
 KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
@@ -603,6 +622,8 @@ KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestrictio
   --requestheader-username-headers=X-Remote-User \
   --requestheader-extra-headers-prefix=X-Remote-Extra- \
   --requestheader-client-ca-file=/etc/kubernetes/pki/ca.pem \
+  --proxy-client-cert-file=/etc/kubernetes/pki/proxy-client.pem \
+  --proxy-client-key-file=/etc/kubernetes/pki/proxy-client-key.pem \
   --service-cluster-ip-range=10.96.0.0/16 \
   --token-auth-file=/etc/kubernetes/token.csv \
   --service-node-port-range=30000-32767 \
@@ -1581,11 +1602,11 @@ function uninstall_k8s() {
   fi
 
   echo -e "$normal""删除所有ns"
-  kubectl get ns | grep -vE "kube-public|kube-system|default|kube-node-lease" | awk 'NR>1' | awk '{print $1}' | xargs -i kubectl delete ns {}
+  kubectl get ns | grep -vE "kube-public|kube-system|default|kube-node-lease|longhorn-system" | awk 'NR>1' | awk '{print $1}' | xargs -i kubectl delete ns {}
   sleep 10
   while true; do
     # 这里要查询删除ns情况
-    if [ "$(kubectl get ns | grep -vE 'kube-public|kube-system|default|kube-node-lease' | awk 'NR>1' | wc -l)" -eq 0 ]; then
+    if [ "$(kubectl get ns | grep -vE 'kube-public|kube-system|default|kube-node-lease|longhorn-system' | awk 'NR>1' | wc -l)" -eq 0 ]; then
       echo -e "$normal""k8s ns 删除完毕"
       kubectl get ns
       break
@@ -1614,24 +1635,46 @@ function uninstall_k8s() {
     fi
   done
 
-  echo -e "$normal""开始卸载openebs"
-  helm 'uninstall' openebs -n kube-system
-  sleep 5
-  while true; do
-    if kubectl get all -A | grep openebs &>/dev/null; then
-      echo -e "$wait""等待openebs容器卸载完成..."
-      kubectl get all -n kube-system -o wide | grep openebs
-      sleep 20
-    else
-      echo -e "$normal""openebs服务已成功卸载"
-      kubectl get pods -n kube-system -o wide
-      break
-    fi
-    ((count += 1))
-    if [ "$count" -gt 10 ]; then
-      echo -e "$warn""已等待$((20 * count + 5))s,时间过长,请考虑手动排错"
-    fi
-  done
+  echo -e "$normal""开始卸载storage"
+  if kubectl get ns | grep "longhorn-system" &>/dev/null; then
+    # longhorn
+    helm 'uninstall' longhorn -n longhorn-system
+    sleep 5
+    while true; do
+      if kubectl get all -n longhorn-system &>/dev/null; then
+        echo -e "$wait""等待longhorn容器卸载完成..."
+        kubectl get all -n longhorn-system -o wide
+        sleep 20
+      else
+        echo -e "$normal""longhorn服务已成功卸载"
+        break
+      fi
+      ((count += 1))
+      if [ "$count" -gt 10 ]; then
+        echo -e "$warn""已等待$((20 * count + 5))s,时间过长,请考虑手动排错"
+      fi
+    done
+  else
+    # openebs
+    echo -e "$normal""开始卸载openebs"
+    helm 'uninstall' openebs -n kube-system
+    sleep 5
+    while true; do
+      if kubectl get all -A | grep openebs &>/dev/null; then
+        echo -e "$wait""等待openebs容器卸载完成..."
+        kubectl get all -n kube-system -o wide | grep openebs
+        sleep 20
+      else
+        echo -e "$normal""openebs服务已成功卸载"
+        kubectl get pods -n kube-system -o wide
+        break
+      fi
+      ((count += 1))
+      if [ "$count" -gt 10 ]; then
+        echo -e "$warn""已等待$((20 * count + 5))s,时间过长,请考虑手动排错"
+      fi
+    done
+  fi
 
   echo -e "$normal""开始卸载coredns"
   kubectl delete -f ./package/coredns.yaml
