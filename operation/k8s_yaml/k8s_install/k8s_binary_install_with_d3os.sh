@@ -4,6 +4,8 @@
 passwd="cosmo"
 # 默认内网网卡
 nic="eth0"
+# 选型默认存储类 1:longhorn 2:openEBS
+storage=1
 
 # IP 注意k8s_master_ips的第一个ip一定要是脚本当前运行所在机器的ip
 k8s_master_ips=("10.206.73.143")
@@ -116,7 +118,7 @@ function init_os() {
       #ssh root@"$HOST" "sed -e 's|^mirrorlist=|#mirrorlist=|g' -e 's|^#baseurl=http://mirror.centos.org/\$contentdir|baseurl=https://mirrors.tuna.tsinghua.edu.cn/centos|g' -i.bak /etc/yum.repos.d/CentOS-*.repo"
 
       echo -e "$normal""安装$HOST 基础环境"
-      ssh root@"$HOST" "yum update -y; yum -y install wget jq psmisc vim net-tools nfs-utils telnet yum-utils device-mapper-persistent-data lvm2 git network-scripts tar curl chrony -y"
+      ssh root@"$HOST" "yum update -y; yum -y install wget jq psmisc vim net-tools nfs-utils telnet yum-utils device-mapper-persistent-data lvm2 git network-scripts tar curl chrony iscsi-initiator-utils -y"
       ssh root@"$HOST" "yum install epel* -y"
       # ssh root@"$HOST" "sed -e 's!^metalink=!#metalink=!g' -e 's!^#baseurl=!baseurl=!g' -e 's!//download\.fedoraproject\.org/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!//download\.example/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!http://mirrors!https://mirrors!g' -i /etc/yum.repos.d/epel*.repo"
 
@@ -1024,6 +1026,105 @@ EOF
   done
 }
 
+function init_storage_class() {
+  echo -e "$normal""准备部署默认存储类"
+  case $storage in
+  1)
+    # 部署longhorn
+    ;;
+  2)
+    # 部署openebs
+    ;;
+  *)
+    # 默认部署longhorn
+    echo -e "$warn""storage为异常值$storage,视其为默认值1"
+    storage=1
+    ;;
+  esac
+
+  case $storage in
+  1)
+    # 部署longhorn
+    if [ ! -f "./package/longhorn-1.3.2.tgz" ]; then
+      echo -e "$warn""未检测到./package/longhorn-1.3.2.tgz文件，即将自动下载，请确定网络环境"
+      helm repo add longhorn https://charts.longhorn.io
+      helm repo update
+      helm pull longhorn/longhorn --version v1.3.2 -d ./package
+    else
+      echo -e "$normal""已检测到helm包./package/longhorn-1.3.2.tgz"
+    fi
+
+    for HOST in ${k8s_all_names[@]}; do
+      ssh root@"$HOST" "systemctl enable iscsid --now"
+    done
+
+    sleep 2
+    kubectl create namespace longhorn-system
+    helm install longhorn --namespace longhorn-system ./package/longhorn-1.3.2.tgz >/dev/null
+    sleep 30
+
+    while true; do
+      # 这里要查询不是Running状态的pod, 如"ContainerCreating","Init:0/3,"PodInitializing","0/1 Running"
+      if kubectl get pods -n longhorn-system | grep -E 'ContainerCreating|0/1' &>/dev/null; then
+        echo -e "$wait""等待longhorn组件部署完成..."
+        kubectl get pods -n longhorn-system -o wide
+        sleep 20
+      else
+        echo -e "$normal""longhorn服务已成功启动"
+        kubectl get pods -n longhorn-system -o wide
+        break
+      fi
+      ((count += 1))
+      if [ "$count" -gt 10 ]; then
+        echo -e "$warn""已等待$((20 * count + 30))s,时间过长,请考虑手动排错"
+      fi
+    done
+    ;;
+  2)
+    # 部署openebs
+    if [ ! -f "./package/openebs-3.3.1.tgz" ]; then
+      echo -e "$warn""未检测到./package/openebs-3.3.1.tgz文件，即将自动下载，请确定网络环境"
+      helm repo add openebs https://openebs.github.io/charts
+      helm repo update
+      helm pull openebs/openebs --version "v3.3.1" -d ./package
+    else
+      echo -e "$normal""已检测到helm包./package/openebs-3.3.1.tgz"
+    fi
+
+    helm install openebs --namespace kube-system ./package/openebs-3.3.1.tgz >/dev/null
+    sleep 30
+
+    while true; do
+      # 这里要查询不是Running状态的pod, 如"ContainerCreating","Init:0/3,"PodInitializing","0/1 Running"
+      if kubectl get pods -n kube-system | grep openebs | grep -E 'ContainerCreating|0/1' &>/dev/null; then
+        echo -e "$wait""等待openebs容器部署完成..."
+        kubectl get pods -n kube-system -o wide | grep openebs
+        sleep 20
+      else
+        echo -e "$normal""openebs服务已成功启动"
+        kubectl get pods -n kube-system -o wide
+        break
+      fi
+      ((count += 1))
+      if [ "$count" -gt 10 ]; then
+        echo -e "$warn""已等待$((20 * count + 30))s,时间过长,请考虑手动排错"
+      fi
+    done
+
+    kubectl patch storageclass openebs-hostpath -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+    if kubectl get sc | grep "openebs-hostpath (default)" &>/dev/null; then
+      echo -e "$normal""默认存储类配置成功"
+    else
+      echo -e "$err""默认存储类配置失败"
+      exit 1
+    fi
+    return
+    ;;
+  *)
+    ;;
+  esac
+}
+
 function init_k8s_pod() {
   echo -e "$normal""please wait ..."
   sleep 5
@@ -1293,46 +1394,14 @@ EOF
     fi
   done
 
-  echo -e "$normal""准备部署默认存储类"
+  echo -e "$normal""解压并安装helm命令"
   tar -zxvf ./package/helm-v3.11.0-linux-amd64.tar.gz
   mv linux-amd64/helm /usr/local/bin/helm
   rm -rf linux-amd64
-  if [ ! -f "./package/openebs-3.3.1.tgz" ]; then
-    echo -e "$warn""未检测到./package/openebs-3.3.1.tgz文件，即将自动下载，请确定网络环境"
-    helm repo add openebs https://openebs.github.io/charts
-    helm repo update
-    helm pull openebs/openebs --version "v3.3.1" -d ./package
-  else
-    echo -e "$normal""已检测到helm包./package/openebs-3.3.1.tgz"
-  fi
+  echo -e "$normal""helm 安装完毕"
 
-  helm install openebs --namespace kube-system ./package/openebs-3.3.1.tgz >/dev/null
-  sleep 30
-
-  while true; do
-    # 这里要查询不是Running状态的pod, 如"ContainerCreating","Init:0/3,"PodInitializing","0/1 Running"
-    if kubectl get pods -n kube-system | grep openebs | grep -E 'ContainerCreating|0/1' &>/dev/null; then
-      echo -e "$wait""等待openebs容器部署完成..."
-      kubectl get pods -n kube-system -o wide | grep openebs
-      sleep 20
-    else
-      echo -e "$normal""openebs服务已成功启动"
-      kubectl get pods -n kube-system -o wide
-      break
-    fi
-    ((count += 1))
-    if [ "$count" -gt 10 ]; then
-      echo -e "$warn""已等待$((20 * count + 30))s,时间过长,请考虑手动排错"
-    fi
-  done
-
-  kubectl patch storageclass openebs-hostpath -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-  if kubectl get sc | grep "openebs-hostpath (default)" &>/dev/null; then
-    echo -e "$normal""默认存储类配置成功"
-  else
-    echo -e "$err""默认存储类配置失败"
-    exit 1
-  fi
+  echo -e "$normal""准备部署默认存储类"
+  init_storage_class
 }
 
 function menu() {
