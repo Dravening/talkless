@@ -1629,7 +1629,7 @@ function uninstall_k8s() {
   fi
 
   echo -e "$normal""卸载metrics-server"
-  kubectl delete -f metrics-server.yaml
+  kubectl delete -f ./package/metrics-server.yaml
   sleep 3
   while true; do
     if kubectl get all -n kube-system | grep -c metrics-server -lt 0; then
