@@ -620,7 +620,7 @@ KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestrictio
   --authorization-mode=Node,RBAC \
   --runtime-config=api/all=true \
   --enable-bootstrap-token-auth \
-  #--enable-aggregator-routing=true \
+  --enable-aggregator-routing=true \
   --requestheader-allowed-names=aggregator,metrics-server \
   --requestheader-group-headers=X-Remote-Group \
   --requestheader-username-headers=X-Remote-User \
@@ -950,7 +950,6 @@ ExecStart=/usr/local/bin/kubelet \
   --network-plugin=cni \
   --rotate-certificates \
   --pod-infra-container-image=registry.aliyuncs.com/google_containers/pause:3.2 \
-  #--authentication-token-webhook=true \
   --root-dir=/etc/cni/net.d \
   --alsologtostderr=true \
   --logtostderr=false \
