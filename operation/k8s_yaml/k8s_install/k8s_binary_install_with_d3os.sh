@@ -620,7 +620,8 @@ KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestrictio
   --authorization-mode=Node,RBAC \
   --runtime-config=api/all=true \
   --enable-bootstrap-token-auth \
-  --requestheader-allowed-names=aggregator \
+  #--enable-aggregator-routing=true \
+  --requestheader-allowed-names=aggregator,metrics-server \
   --requestheader-group-headers=X-Remote-Group \
   --requestheader-username-headers=X-Remote-User \
   --requestheader-extra-headers-prefix=X-Remote-Extra- \
@@ -949,6 +950,7 @@ ExecStart=/usr/local/bin/kubelet \
   --network-plugin=cni \
   --rotate-certificates \
   --pod-infra-container-image=registry.aliyuncs.com/google_containers/pause:3.2 \
+  #--authentication-token-webhook=true \
   --root-dir=/etc/cni/net.d \
   --alsologtostderr=true \
   --logtostderr=false \
@@ -1426,6 +1428,25 @@ EOF
 
   echo -e "$normal""准备部署默认存储类"
   init_storage_class
+
+  # 启动metrics-server
+  echo -e "$normal""部署metrics-server"
+  kubectl apply -f ./package/metrics-server.yaml
+  while true; do
+    if kubectl top nodes | wc -l -eq 0; then
+      echo -e "$wait""等待metrics-server启动完成..."
+      kubectl top nodes
+      sleep 20
+    else
+      echo -e "$normal""metrics-server已启动完成"
+      kubectl top nodes
+      break
+    fi
+    ((count += 1))
+    if [ "$count" -gt 10 ]; then
+      echo -e "$warn""已等待$((20 * count))s,时间过长,请考虑手动排错"
+    fi
+  done
 }
 
 function menu() {
@@ -1598,11 +1619,33 @@ function uninstall_k8s() {
     echo -e "$err""当前package目录下缺少 calico.yaml 文件"
     exit_flag=1
   fi
+  if [ ! -f "./package/metrics-server.yaml" ]; then
+    echo -e "$err""当前package目录下缺少 metrics-server.yaml 文件"
+    exit_flag=1
+  fi
   if [[ $exit_flag == 1 ]]; then
     exit 1
   else
     echo -e "$normal""uninstall文件检测通过"
   fi
+
+  echo -e "$normal""卸载metrics-server"
+  kubectl delete -f metrics-server.yaml
+  sleep 3
+  while true; do
+    if kubectl get all -n kube-system | grep -c metrics-server -lt 0; then
+      echo -e "$wait""等待metrics-server卸载完成..."
+      kubectl get all -n kube-system | grep metrics-server
+      sleep 10
+    else
+      echo -e "$normal""metrics-server已卸载完成"
+      break
+    fi
+    ((count += 1))
+    if [ "$count" -gt 10 ]; then
+      echo -e "$warn""已等待$((10 * count))s,时间过长,请考虑手动排错"
+    fi
+  done
 
   echo -e "$normal""删除所有ns"
   kubectl get ns | grep -vE "kube-public|kube-system|default|kube-node-lease|longhorn-system" | awk 'NR>1' | awk '{print $1}' | xargs -i kubectl delete ns {}
@@ -1644,7 +1687,7 @@ function uninstall_k8s() {
     helm 'uninstall' longhorn -n longhorn-system
     sleep 5
     while true; do
-      if kubectl get all -n longhorn-system &>/dev/null; then
+      if kubectl get all -n longhorn-system | wc -l -lt 0; then
         echo -e "$wait""等待longhorn容器卸载完成..."
         kubectl get all -n longhorn-system -o wide
         sleep 20
