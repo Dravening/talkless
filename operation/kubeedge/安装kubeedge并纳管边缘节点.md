@@ -357,7 +357,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: nginx
-  namespace: demo-project               #替换为自己的namespace
+  namespace: test               #替换为自己的namespace
   labels:
     app: nginx
   annotations:
@@ -394,7 +394,7 @@ spec:
       terminationGracePeriodSeconds: 30
       dnsPolicy: ClusterFirst
       nodeSelector:
-        kubernetes.io/hostname: node1         #替换为自己的边缘节点的node名
+        kubernetes.io/hostname: raspberrypi         #替换为自己的边缘节点的node名
       serviceAccountName: default
       serviceAccount: default
       securityContext: {}
@@ -416,7 +416,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: nginx
-  namespace: demo-project                 #替换为自己的namespace
+  namespace: test                 #替换为自己的namespace
   labels:
     app: nginx-svc
   annotations:
@@ -614,6 +614,8 @@ modules:
 ##### 安装edgeMesh
 
 > 注意：当前版本kubesphere自带的edgemesh版本与环境变量不匹配，不要使用应用商店里面的edgemesh包
+
+> 注意：此处边缘节点如果有多网卡很可能埋坑，优先配序号小的
 
 下方命令中psk的值可以使用`openssl rand -base64 32`获取
 
@@ -858,6 +860,7 @@ font-family: Tahoma, Verdana, Arial, sans-serif; }
 如需从集群中卸载 KubeEdge，运行以下命令：
 
 ```
+[root@draven ~]# helm uninstall edgemesh -n kubeedge
 [root@draven ~]# helm uninstall kubeedge -n kubeedge
 [root@draven ~]# kubectl delete ns kubeedge
 ```

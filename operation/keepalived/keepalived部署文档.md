@@ -2,7 +2,24 @@
 
 本文参考https://zhuanlan.zhihu.com/p/566166393
 
+原理详解https://blog.csdn.net/Little_fxc/article/details/118575772
+
+LVS：https://www.cnblogs.com/llhua/p/4195330.html
+
+### 一、前言
+
+Keepalived 软件起初是专为 LVS 负载均衡软件设计的，用来管理并监控 LVS 集群系统中各个服务节点的状态，后来又加入了可以实现高可用的 VRRP 功能。因此，Keepalived除了能够管理 LVS 软件外，还可以作为其他服务（例如：Nginx、Haproxy、MySQL等）的高可用解决方案软件。
+
+本次示例使用`VRRP Instance`，没有使用`synchroization group`（适合用在多个服务有"一损俱损"概念的时候）；
+
+
+
 ### 一、环境说明
+
+| 主机名      | 系统       | 部署内容            | 备注                |
+| ----------- | ---------- | ------------------- | ------------------- |
+| tcosmo-sh05 | CentOS 7.9 | 部署test-nginx:68-5 | 内网ip：10.206.68.5 |
+| tcosmo-sh06 | CentOS 7.9 | 部署test-nginx:68-6 | 内网ip：10.206.68.6 |
 
 有10.206.68.5和10.206.68.6两台机器，两台机器分别使用docker启动了nginx
 
@@ -11,10 +28,20 @@ docker run -dit --name mynginx -p 8071:8071 test-nginx:68-5
 docker run -dit --name mynginx -p 8071:8071 test-nginx:68-6
 ```
 
-> test-nginx基于官方nginx镜像，其中/usr/share/nginx/html/目录下增加了如下内容
+> test-nginx基于官方nginx镜像，其中/usr/share/nginx/html/目录下增加了如下内容，并且调整了默认端口
 >
 > ```
-> echo "<h1>This is 68.5</h1>"  > /usr/share/nginx/html/test.html
+> root@b337a829bba4: cat > /etc/nginx/conf.d/web.conf <<EOF
+> server{
+>         listen 8071;
+>         root         /usr/share/nginx/html;
+>         index 8071.html;
+> }
+> EOF
+> ```
+>
+> ```
+> root@b337a829bba4: echo "<h1>This is 68.5, port 8071</h1>"  > /usr/share/nginx/html/8071.html
 > ```
 
 ### 二、安装keepalived
@@ -65,6 +92,7 @@ vrrp_instance VI_1 {
   virtual_router_id 52
   priority 100
   advert_int 1
+  nopreempt
   authentication {
     auth_type PASS
     auth_pass test
@@ -109,6 +137,7 @@ vrrp_instance VI_1 {
   virtual_router_id 52
   priority 99
   advert_int 1
+  nopreempt
   authentication {
     auth_type PASS
     auth_pass test
