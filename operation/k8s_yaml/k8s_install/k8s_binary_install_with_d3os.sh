@@ -1,11 +1,14 @@
 #!/bin/bash
 
+# ======================================================================================================================
+# 变量区域
+# ======================================================================================================================
 # 服务器密码统一为cosmo
 passwd="cosmo"
 # 默认内网网卡
 nic="eth0"
 # 选型默认存储类 1:longhorn 2:openEBS
-storage=1
+storage=2
 
 # IP 注意k8s_master_ips的第一个ip一定要是脚本当前运行所在机器的ip
 k8s_master_ips=("10.206.73.143")
@@ -14,15 +17,33 @@ k8s_master_names=("k8s-master")
 k8s_node_ips=("10.206.73.136" "10.206.73.137" "10.206.73.138")
 k8s_node_names=("k8s-node01" "k8s-node02" "k8s-node03")
 
-# =====================================================================================================================
+# 0:使用新版d3os方案 1:使用原始稳定方案
+d3os_type=1
+
+# ======================================================================================================================
+# 脚本逻辑
+# ======================================================================================================================
 # 自动计算总共资源
 k8s_all_ips=("${k8s_master_ips[@]}" "${k8s_node_ips[@]}")
 k8s_all_names=("${k8s_master_names[@]}" "${k8s_node_names[@]}")
+master_num_count=${#k8s_master_names[@]}
 node_num_count=${#k8s_all_names[@]}
 k8s_other_names=("${k8s_all_names[@]}")
 unset 'k8s_other_names[0]'
-k8s_master_ip="${k8s_master_ips[0]}"
+current_node_ip="${k8s_master_ips[0]}"
 current_node_name="${k8s_master_names[0]}"
+
+d3os_installer_path='./package/d3os-platform-installer.yaml'
+d3os_delete_path='./package/d3os-platform-delete.sh'
+d3os_configuration_path='./package/d3os-cluster-configuration.yaml'
+ks_namespace='d3os-system'
+
+if [[ $d3os_type == 1 ]]; then
+  d3os_installer_path='./package/classic/ks-installer-3.1.yaml'
+  d3os_delete_path='./package/classic/ks-delete.sh'
+  d3os_configuration_path='./package/classic/cluster-configuration-3.1.yaml'
+  ks_namespace='kubesphere-system'
+fi
 
 # 警告提示符[ERROR]
 err="[\033[31mERROR\033[0m]"
@@ -33,7 +54,7 @@ star="\033[32m(^_^)\033[0m"
 
 function ping_test() {
   a=()
-  for ip in "${k8s_all_names[@]}"; do
+  for ip in "${k8s_other_names[@]}"; do
     if ! ping -c 2 "$ip" >/dev/null; then
       echo -e "$err" cant connect with "${a[*]}"
       a+=("$ip")
@@ -101,7 +122,7 @@ function set_local() {
       ssh-keygen -f /root/.ssh/id_rsa -P ''
       # sshpass 会使用全局变量SSHPASS作为密码
       export SSHPASS="$passwd"
-      for HOST in ${k8s_all_names[@]}; do
+      for HOST in "${k8s_all_names[@]}"; do
         sshpass -e ssh-copy-id -o StrictHostKeyChecking=no "$HOST"
       done
       ;;
@@ -112,9 +133,14 @@ function set_local() {
 }
 
 function init_os() {
-  for HOST in ${k8s_all_names[@]}; do
+  for HOST in "${k8s_all_names[@]}"; do
     {
+      scp ./package/libseccomp-2.5.2-1.el8.x86_64.rpm "$HOST":~
+      ssh root@"$HOST" "rpm -ivh ~/libseccomp-2.5.2-1.el8.x86_64.rpm"
+
       #echo "配置主机 $HOST yum源"
+      ssh root@"$HOST" "mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base-bak.repo"
+      ssh root@"$HOST" "curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo"
       #ssh root@"$HOST" "sed -e 's|^mirrorlist=|#mirrorlist=|g' -e 's|^#baseurl=http://mirror.centos.org/\$contentdir|baseurl=https://mirrors.tuna.tsinghua.edu.cn/centos|g' -i.bak /etc/yum.repos.d/CentOS-*.repo"
 
       echo -e "$normal""安装$HOST 基础环境"
@@ -122,12 +148,14 @@ function init_os() {
       ssh root@"$HOST" "yum install epel* -y"
       # ssh root@"$HOST" "sed -e 's!^metalink=!#metalink=!g' -e 's!^#baseurl=!baseurl=!g' -e 's!//download\.fedoraproject\.org/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!//download\.example/pub!//mirrors.tuna.tsinghua.edu.cn!g' -e 's!http://mirrors!https://mirrors!g' -i /etc/yum.repos.d/epel*.repo"
 
+      echo -e "$normal""安装$HOST ipvs模块"
+      ssh root@"$HOST" "yum install ipvsadm ipset sysstat conntrack -y"
       wait
     } >>./log/"$HOST".txt &
   done
   wait
 
-  for HOST in ${k8s_other_names[@]}; do
+  for HOST in "${k8s_all_names[@]}"; do
     {
       echo -e "$normal""配置 $HOST 主机名"
       # shellcheck disable=SC2029
@@ -175,19 +203,7 @@ EOF
 ulimit -SHn 65535
 "
 
-      echo -e "$normal""升级$HOST 内核"
-      os_version=$(ssh root@"$HOST" "cat /etc/os-release 2>/dev/null | grep VERSION_ID= | awk -F= '{print \$2}'")
-      if [ "$os_version" = "\"7\"" ]; then
-        ssh root@"$HOST" "yum install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm -y ; sed -i \"s@mirrorlist@#mirrorlist@g\" /etc/yum.repos.d/elrepo.repo ; sed -i \"s@elrepo.org/linux@mirrors.tuna.tsinghua.edu.cn/elrepo@g\" /etc/yum.repos.d/elrepo.repo ; yum  --disablerepo=\"*\"  --enablerepo=\"elrepo-kernel\"  list  available -y ; yum  --enablerepo=elrepo-kernel  install  kernel-ml -y ; grubby --set-default \$(ls /boot/vmlinuz-* | grep elrepo) ; grubby --default-kernel"
-      fi
-      if [ "$os_version" = "\"8\"" ]; then
-        ssh root@"$HOST" "yum install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm -y ; sed -i \"s@mirrorlist@#mirrorlist@g\" /etc/yum.repos.d/elrepo.repo ; sed -i \"s@elrepo.org/linux@mirrors.tuna.tsinghua.edu.cn/elrepo@g\" /etc/yum.repos.d/elrepo.repo ; yum  --disablerepo=\"*\"  --enablerepo=\"elrepo-kernel\"  list  available -y ; yum  --enablerepo=elrepo-kernel  install  kernel-ml -y ; grubby --default-kernel"
-      fi
-
-      echo -e "$normal""安装$HOST ipvs模块"
-      ssh root@"$HOST" "yum install ipvsadm ipset sysstat conntrack libseccomp -y"
-      ssh root@"$HOST" "cat >> /etc/modules-load.d/ipvs.conf <<EOF
-cat
+      ssh root@"$HOST" "cat > /etc/modules-load.d/ipvs.conf <<EOF
 ip_vs
 ip_vs_rr
 ip_vs_wrr
@@ -233,37 +249,259 @@ EOF"
     } >>./log/"$HOST".txt &
   done
   wait
+}
 
-  for HOST in ${k8s_other_names[@]}; do
-    echo -e "$normal""重启$HOST"
-    ssh root@"$HOST" "reboot"
-  done
-
-  while true; do
-    sleep 10
-    ping_res=$(ping_test)
-    if [ -z "$ping_res" ]; then
-      echo -e "$normal""服务器重启完成"
-      break
-    else
-      echo -e "$normal""未启动服务器：$ping_res ，等待20秒..."
+function update_kernel() {
+  for HOST in "${k8s_all_names[@]}"; do
+    echo -e "$normal""升级$HOST 内核"
+    os_version=$(ssh root@"$HOST" "cat /etc/os-release 2>/dev/null | grep VERSION_ID= | awk -F= '{print \$2}'")
+    if [ "$os_version" = "\"7\"" ]; then
+      ssh root@"$HOST" "yum install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm -y ; sed -i \"s@mirrorlist@#mirrorlist@g\" /etc/yum.repos.d/elrepo.repo ; sed -i \"s@elrepo.org/linux@mirrors.tuna.tsinghua.edu.cn/elrepo@g\" /etc/yum.repos.d/elrepo.repo ; yum  --disablerepo=\"*\"  --enablerepo=\"elrepo-kernel\"  list  available -y ; yum  --enablerepo=elrepo-kernel  install  kernel-ml -y ; grubby --set-default \$(ls /boot/vmlinuz-* | grep elrepo) ; grubby --default-kernel"
     fi
-    sleep 20
+    if [ "$os_version" = "\"8\"" ]; then
+      ssh root@"$HOST" "yum install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm -y ; sed -i \"s@mirrorlist@#mirrorlist@g\" /etc/yum.repos.d/elrepo.repo ; sed -i \"s@elrepo.org/linux@mirrors.tuna.tsinghua.edu.cn/elrepo@g\" /etc/yum.repos.d/elrepo.repo ; yum  --disablerepo=\"*\"  --enablerepo=\"elrepo-kernel\"  list  available -y ; yum  --enablerepo=elrepo-kernel  install  kernel-ml -y ; grubby --default-kernel"
+    fi
   done
 
-  read -rp "主节点即将重启[y/n]" restart_flag
+  read -rp "节点即将重启[y/n]" restart_flag
+  case $restart_flag in
+  y)
+    for HOST in "${k8s_other_names[@]}"; do
+      echo -e "$normal""重启$HOST"
+      ssh root@"$HOST" "reboot"
+    done
+
+    while true; do
+      if [[ $node_num_count == 1 ]]; then
+        break
+      fi
+
+      sleep 10
+      ping_res=$(ping_test)
+      if [ -z "$ping_res" ]; then
+        echo -e "$normal""服务器重启完成"
+        break
+      else
+        echo -e "$normal""未启动服务器：$ping_res ，等待20秒..."
+      fi
+      sleep 20
+    done
+    ;;
+  *)
+    echo -e "$normal""节点未重启"
+    ;;
+  esac
+
+  read -rp "当前节点即将重启(此脚本会中断)[y/n]" restart_flag
   case $restart_flag in
   y)
     reboot
     ;;
   *)
-    echo -e "$normal""主节点未重启"
+    echo -e "$normal""当前节点未重启"
     ;;
   esac
 }
 
+function make_dir() {
+  for HOST in "${k8s_all_names[@]}"; do
+    {
+      echo -e "$normal""创建$HOST目录"
+      ssh root@"$HOST" "mkdir -p /etc/cni/net.d"
+      ssh root@"$HOST" "mkdir -p /etc/containerd"
+      ssh root@"$HOST" "mkdir -p /opt/cni/bin /etc/cni/net.d"
+      ssh root@"$HOST" "mkdir -p /etc/kubernetes/pki /etc/kubernetes/manifests/"
+      ssh root@"$HOST" "mkdir -p /etc/kubernetes/manifests/"
+      ssh root@"$HOST" "mkdir -p /etc/systemd/system/kubelet.service.d /var/lib/kubelet /var/lib/kube-proxy /var/log/kubernetes"
+    } >>./log/"$HOST".txt
+  done
+
+  for HOST in "${k8s_master_names[@]}"; do
+    {
+      echo -e "$normal""创建$HOST目录"
+      ssh root@"$HOST" "mkdir -p /etc/etcd/ssl"
+      ssh root@"$HOST" "mkdir -p /var/lib/etcd/default.etcd"
+    } >>./log/"$HOST".txt
+  done
+  mkdir ~/.kube
+}
+
+function init_local() {
+  echo -e "$normal""配置证书工具cfssl"
+  \cp ./package/cfssl_linux-amd64 /usr/local/bin/cfssl
+  \cp ./package/cfssljson_linux-amd64 /usr/local/bin/cfssljson
+  \cp ./package/cfssl-certinfo_linux-amd64 /usr/local/bin/cfssl-certinfo
+  chmod +x /usr/local/bin/cfssl*
+
+  echo -e "$normal""解压package程序包"
+  tar -xf ./package/kubernetes-server-linux-amd64.tar.gz --strip-components=3 -C /usr/local/bin kubernetes/server/bin/kube{let,ctl,-apiserver,-controller-manager,-scheduler,-proxy}
+  tar -xf ./package/etcd-v3.5.2-linux-amd64.tar.gz --strip-components=1 -C /usr/local/bin etcd-v3.5.2-linux-amd64/etcd{,ctl}
+  tar -xf ./package/cri-containerd-cni-1.6.21-linux-amd64.tar.gz -C /
+
+  echo -e "$normal""将所需组件发送到各k8s节点"
+  for NODE in "${k8s_master_names[@]}"; do
+    echo "$NODE"
+    scp /usr/local/bin/kube{let,ctl,-apiserver,-controller-manager,-scheduler,-proxy} "$NODE":/usr/local/bin/
+    scp /usr/local/bin/etcd* $NODE:/usr/local/bin/;
+  done
+  for NODE in "${k8s_all_names[@]}"; do
+    scp /usr/local/bin/kubelet "$NODE":/usr/local/bin/
+    scp /usr/local/bin/kube-proxy "$NODE":/usr/local/bin/
+    scp ./package/cri-containerd-cni-1.6.21-linux-amd64.tar.gz "$NODE":~
+    sleep 1
+  done
+  wait
+
+  for NODE in "${k8s_all_names[@]}"; do
+    ssh root@"$NODE" "tar -xf ~/cri-containerd-cni-1.6.21-linux-amd64.tar.gz -C /"
+  done
+
+  echo -e "$normal""创建ca证书"
+  cat >ca-csr.json <<EOF
+{
+  "CN": "kubernetes",
+  "key": {
+      "algo": "rsa",
+      "size": 2048
+  },
+  "names": [
+      {
+          "C": "CN",
+          "ST": "Beijing",
+          "L": "Beijing",
+          "O": "kubemsb",
+          "OU": "CN"
+      }
+  ],
+  "ca": {
+      "expiry": "87600h"
+  }
+}
+EOF
+  cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+  #cfssl print-defaults config > ca-config.json
+  cat >ca-config.json <<EOF
+{
+  "signing": {
+    "default": {
+      "expiry": "87600h"
+    },
+    "profiles": {
+      "kubernetes": {
+        "usages": [
+          "signing",
+          "key encipherment",
+          "server auth",
+          "client auth"
+        ],
+        "expiry": "87600h"
+      }
+    }
+  }
+}
+EOF
+  \cp ca* /etc/kubernetes/pki/
+  wait
+}
+
+function init_etcd() {
+  echo -e "$normal""生成etcd证书"
+  cat >etcd-csr.json <<EOF
+{
+  "CN": "etcd",
+  "hosts": [
+    "127.0.0.1",
+    "$current_node_ip"
+  ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [{
+    "C": "CN",
+    "ST": "Beijing",
+    "L": "Beijing",
+    "O": "kubemsb",
+    "OU": "CN"
+  }]
+}
+EOF
+  cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes etcd-csr.json | cfssljson -bare etcd
+  \cp ca*.pem /etc/etcd/ssl
+  mv -f etcd*.pem /etc/etcd/ssl
+
+#  目前仅支持单master节点
+#  echo "分发etcd证书"
+#  for NODE in "${k8s_all_names[@]}"; do
+#      for FILE in etcd-ca-key.pem  etcd-ca.pem  etcd-key.pem  etcd.pem; do
+#      scp /etc/etcd/ssl/${FILE} "$NODE":/etc/etcd/ssl/${FILE}
+#      done
+#  done
+
+  echo -e "$normal""配置主机$HOST etcd"
+  cat >/etc/etcd/etcd.conf <<EOF
+#[Member]
+ETCD_NAME='etcd1'
+ETCD_DATA_DIR='/var/lib/etcd/default.etcd'
+ETCD_LISTEN_PEER_URLS='https://$current_node_ip:2380'
+ETCD_LISTEN_CLIENT_URLS='https://$current_node_ip:2379,http://127.0.0.1:2379'
+
+#[Clustering]
+ETCD_INITIAL_ADVERTISE_PEER_URLS='https://$current_node_ip:2380'
+ETCD_ADVERTISE_CLIENT_URLS='https://$current_node_ip:2379'
+ETCD_INITIAL_CLUSTER='etcd1=https://$current_node_ip:2380'
+ETCD_INITIAL_CLUSTER_TOKEN='etcd-cluster'
+ETCD_INITIAL_CLUSTER_STATE='new'
+EOF
+
+  echo "配置主机$current_node_name etcd service文件"
+  cat >/etc/systemd/system/etcd.service <<EOF
+[Unit]
+Description=Etcd Server
+After=network.target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+EnvironmentFile=-/etc/etcd/etcd.conf
+WorkingDirectory=/var/lib/etcd/
+ExecStart=/usr/local/bin/etcd \
+  --cert-file=/etc/etcd/ssl/etcd.pem \
+  --key-file=/etc/etcd/ssl/etcd-key.pem \
+  --trusted-ca-file=/etc/etcd/ssl/ca.pem \
+  --peer-cert-file=/etc/etcd/ssl/etcd.pem \
+  --peer-key-file=/etc/etcd/ssl/etcd-key.pem \
+  --peer-trusted-ca-file=/etc/etcd/ssl/ca.pem \
+  --peer-client-cert-auth \
+  --client-cert-auth
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  echo "测试$current_node_name etcd"
+  mkdir -p /etc/kubernetes/pki/etcd
+  ln -s /etc/etcd/ssl/* /etc/kubernetes/pki/etcd/
+  systemctl daemon-reload
+  systemctl enable etcd
+  systemctl start etcd
+
+  cat >>~/.bashrc << EOF
+export ETCDCTL_API=3
+alias etcdctl='etcdctl --endpoints=https://[$current_node_ip]:2379 --cacert=/etc/kubernetes/pki/etcd/ca.pem --cert=/etc/kubernetes/pki/etcd/etcd.pem --key=/etc/kubernetes/pki/etcd/etcd-key.pem'
+alias etcdhelper='etcdhelper --endpoint=https://[$current_node_ip]:2379 --cacert=/etc/kubernetes/pki/etcd/ca.pem --cert=/etc/kubernetes/pki/etcd/etcd.pem --key=/etc/kubernetes/pki/etcd/etcd-key.pem'
+EOF
+
+  # shellcheck source=/root/.bashrc
+  source ~/.bashrc
+}
+
 function init_containerd() {
-  for HOST in ${k8s_all_names[@]}; do
+  for HOST in "${k8s_all_names[@]}"; do
     {
       echo -e "$normal""配置主机$HOST Containerd"
       ssh root@"$HOST" 'cat >/etc/containerd/config.toml<<EOF
@@ -292,6 +530,18 @@ oom_score = -999
   path = ""
 
 [plugins]
+#  [plugins."io.containerd.grpc.v1.cri"]
+#    [plugins."io.containerd.grpc.v1.cri".containerd]
+#      default_runtime_name = "nvidia"
+#
+#      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+#        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
+#          privileged_without_host_devices = false
+#          runtime_engine = ""
+#          runtime_root = ""
+#          runtime_type = "io.containerd.runc.v2"
+#          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
+#            BinaryName = "/usr/bin/nvidia-container-runtime"
   [plugins.cgroups]
     no_prometheus = false
   [plugins.cri]
@@ -373,179 +623,6 @@ EOF'
   wait
 }
 
-function init_local() {
-  echo -e "$normal""配置证书工具cfssl"
-  \cp ./package/cfssl_linux-amd64 /usr/local/bin/cfssl
-  \cp ./package/cfssljson_linux-amd64 /usr/local/bin/cfssljson
-  \cp ./package/cfssl-certinfo_linux-amd64 /usr/local/bin/cfssl-certinfo
-  chmod +x /usr/local/bin/cfssl*
-
-  echo -e "$normal""解压package程序包"
-  tar -xf ./package/kubernetes-server-linux-amd64.tar.gz --strip-components=3 -C /usr/local/bin kubernetes/server/bin/kube{let,ctl,-apiserver,-controller-manager,-scheduler,-proxy}
-  tar -xf ./package/etcd-v3.5.2-linux-amd64.tar.gz --strip-components=1 -C /usr/local/bin etcd-v3.5.2-linux-amd64/etcd{,ctl}
-  tar -xf ./package/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -C /
-  \cp ./package/runc.amd64 /usr/local/sbin/runc
-  chmod +x /usr/local/sbin/runc
-
-  echo -e "$normal""将所需组件发送到各k8s节点"
-  #for NODE in "${k8s_all_names[@]}"; do echo "$NODE"; scp /usr/local/bin/kube{let,ctl,-apiserver,-controller-manager,-scheduler,-proxy} "$NODE":/usr/local/bin/; scp /usr/local/bin/etcd* $NODE:/usr/local/bin/; done
-  for NODE in ${k8s_node_names[@]}; do
-    scp /usr/local/bin/kubelet "$NODE":/usr/local/bin/
-    scp /usr/local/bin/kube-proxy "$NODE":/usr/local/bin/
-    scp ./package/cri-containerd-cni-1.6.1-linux-amd64.tar.gz "$NODE":~
-    sleep 1
-  done
-  wait
-
-  for NODE in ${k8s_node_names[@]}; do
-    ssh root@"$NODE" "tar -xf ~/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -C /"
-    scp /usr/local/sbin/runc "$NODE":/usr/local/sbin/runc
-    ssh root@"$NODE" "chmod +x /usr/local/sbin/runc"
-  done
-
-  echo -e "$normal""创建ca证书"
-  cat >ca-csr.json <<EOF
-{
-  "CN": "kubernetes",
-  "key": {
-      "algo": "rsa",
-      "size": 2048
-  },
-  "names": [
-      {
-          "C": "CN",
-          "ST": "Beijing",
-          "L": "Beijing",
-          "O": "kubemsb",
-          "OU": "CN"
-      }
-  ],
-  "ca": {
-      "expiry": "87600h"
-  }
-}
-EOF
-  cfssl gencert -initca ca-csr.json | cfssljson -bare ca
-  #cfssl print-defaults config > ca-config.json
-  cat >ca-config.json <<EOF
-{
-  "signing": {
-    "default": {
-      "expiry": "87600h"
-    },
-    "profiles": {
-      "kubernetes": {
-        "usages": [
-          "signing",
-          "key encipherment",
-          "server auth",
-          "client auth"
-        ],
-        "expiry": "87600h"
-      }
-    }
-  }
-}
-EOF
-  \cp ca* /etc/kubernetes/pki/
-  wait
-
-}
-
-function init_etcd() {
-  echo -e "$normal""生成etcd证书"
-  cat >etcd-csr.json <<EOF
-{
-  "CN": "etcd",
-  "hosts": [
-    "127.0.0.1",
-    "$k8s_master_ip"
-  ],
-  "key": {
-    "algo": "rsa",
-    "size": 2048
-  },
-  "names": [{
-    "C": "CN",
-    "ST": "Beijing",
-    "L": "Beijing",
-    "O": "kubemsb",
-    "OU": "CN"
-  }]
-}
-EOF
-  cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=kubernetes etcd-csr.json | cfssljson -bare etcd
-  \cp ca*.pem /etc/etcd/ssl
-  mv -f etcd*.pem /etc/etcd/ssl
-
-  #echo "分发etcd证书"
-  #for NODE in "${k8s_all_names[@]}"; do
-  #    for FILE in etcd-ca-key.pem  etcd-ca.pem  etcd-key.pem  etcd.pem; do
-  #    scp /etc/etcd/ssl/${FILE} "$NODE":/etc/etcd/ssl/${FILE}
-  #    done
-  #done
-
-  echo -e "$normal""配置主机$HOST etcd"
-  cat >/etc/etcd/etcd.conf <<EOF
-#[Member]
-ETCD_NAME='etcd1'
-ETCD_DATA_DIR='/var/lib/etcd/default.etcd'
-ETCD_LISTEN_PEER_URLS='https://$k8s_master_ip:2380'
-ETCD_LISTEN_CLIENT_URLS='https://$k8s_master_ip:2379,http://127.0.0.1:2379'
-
-#[Clustering]
-ETCD_INITIAL_ADVERTISE_PEER_URLS='https://$k8s_master_ip:2380'
-ETCD_ADVERTISE_CLIENT_URLS='https://$k8s_master_ip:2379'
-ETCD_INITIAL_CLUSTER='etcd1=https://$k8s_master_ip:2380'
-ETCD_INITIAL_CLUSTER_TOKEN='etcd-cluster'
-ETCD_INITIAL_CLUSTER_STATE='new'
-EOF
-
-  echo "配置主机$current_node_name etcd service文件"
-  cat >/etc/systemd/system/etcd.service <<EOF
-[Unit]
-Description=Etcd Server
-After=network.target
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=notify
-EnvironmentFile=-/etc/etcd/etcd.conf
-WorkingDirectory=/var/lib/etcd/
-ExecStart=/usr/local/bin/etcd \
-  --cert-file=/etc/etcd/ssl/etcd.pem \
-  --key-file=/etc/etcd/ssl/etcd-key.pem \
-  --trusted-ca-file=/etc/etcd/ssl/ca.pem \
-  --peer-cert-file=/etc/etcd/ssl/etcd.pem \
-  --peer-key-file=/etc/etcd/ssl/etcd-key.pem \
-  --peer-trusted-ca-file=/etc/etcd/ssl/ca.pem \
-  --peer-client-cert-auth \
-  --client-cert-auth
-Restart=on-failure
-RestartSec=5
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  echo "测试$current_node_name etcd"
-  mkdir -p /etc/kubernetes/pki/etcd
-  ln -s /etc/etcd/ssl/* /etc/kubernetes/pki/etcd/
-  systemctl daemon-reload
-  systemctl enable etcd
-  systemctl start etcd
-
-  cat >>~/.bashrc << EOF
-export ETCDCTL_API=3
-alias etcdctl='etcdctl --endpoints=https://[$k8s_master_ip]:2379 --cacert=/etc/kubernetes/pki/etcd/ca.pem --cert=/etc/kubernetes/pki/etcd/etcd.pem --key=/etc/kubernetes/pki/etcd/etcd-key.pem'
-EOF
-
-  # shellcheck source=/root/.bashrc
-  source ~/.bashrc
-}
-
 function init_k8s_master() {
   # ----kube-apiserver----
   echo -e "$normal""配置主机$current_node_name api-server证书及token文件"
@@ -613,9 +690,9 @@ EOF
   cat >/etc/kubernetes/kube-apiserver.conf <<EOF
 KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota \
   --anonymous-auth=false \
-  --bind-address=$k8s_master_ip \
+  --bind-address=$current_node_ip \
   --secure-port=6443 \
-  --advertise-address=$k8s_master_ip \
+  --advertise-address=$current_node_ip \
   --insecure-port=0 \
   --authorization-mode=Node,RBAC \
   --runtime-config=api/all=true \
@@ -642,13 +719,13 @@ KUBE_APISERVER_OPTS=--enable-admission-plugins=NamespaceLifecycle,NodeRestrictio
   --etcd-cafile=/etc/etcd/ssl/ca.pem \
   --etcd-certfile=/etc/etcd/ssl/etcd.pem \
   --etcd-keyfile=/etc/etcd/ssl/etcd-key.pem \
-  --etcd-servers=https://$k8s_master_ip:2379 \
+  --etcd-servers=https://$current_node_ip:2379 \
   --enable-swagger-ui=true \
   --allow-privileged=true \
-  --apiserver-count=3 \
-  --audit-log-maxage=30 \
-  --audit-log-maxbackup=3 \
-  --audit-log-maxsize=100 \
+  --apiserver-count=$master_num_count \
+  --audit-log-maxage=10 \
+  --audit-log-maxbackup=2 \
+  --audit-log-maxsize=10 \
   --audit-log-path=/var/log/kube-apiserver-audit.log \
   --event-ttl=1h \
   --alsologtostderr=true \
@@ -702,7 +779,7 @@ EOF
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes admin-csr.json | cfssljson -bare /etc/kubernetes/pki/admin
 
   # ----kubeconfig----
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=kube.config
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$current_node_ip":6443 --kubeconfig=kube.config
   kubectl config set-credentials kubernetes-admin --client-certificate=/etc/kubernetes/pki/admin.pem --client-key=/etc/kubernetes/pki/admin-key.pem --embed-certs=true --kubeconfig=kube.config
   kubectl config set-context kubernetes --cluster=kubernetes --user=kubernetes-admin --kubeconfig=kube.config
   kubectl config use-context kubernetes --kubeconfig=kube.config
@@ -723,7 +800,7 @@ EOF
   },
   "hosts": [
     "127.0.0.1",
-    "$k8s_master_ip"
+    "$current_node_ip"
   ],
   "names": [
     {
@@ -738,7 +815,7 @@ EOF
 EOF
 
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes kube-controller-manager-csr.json | cfssljson -bare /etc/kubernetes/pki/kube-controller-manager
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$current_node_ip":6443 --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
   kubectl config set-credentials system:kube-controller-manager --client-certificate=/etc/kubernetes/pki/kube-controller-manager.pem --client-key=/etc/kubernetes/pki/kube-controller-manager-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
   kubectl config set-context system:kube-controller-manager --cluster=kubernetes --user=system:kube-controller-manager --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
   kubectl config use-context system:kube-controller-manager --kubeconfig=/etc/kubernetes/kube-controller-manager.kubeconfig
@@ -795,7 +872,7 @@ EOF
   "CN": "system:kube-scheduler",
   "hosts": [
     "127.0.0.1",
-    "$k8s_master_ip"
+    "$current_node_ip"
   ],
   "key": {
     "algo": "rsa",
@@ -813,7 +890,7 @@ EOF
 }
 EOF
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes kube-scheduler-csr.json | cfssljson -bare /etc/kubernetes/pki/kube-scheduler
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$current_node_ip":6443 --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
   kubectl config set-credentials system:kube-scheduler --client-certificate=/etc/kubernetes/pki/kube-scheduler.pem --client-key=/etc/kubernetes/pki/kube-scheduler-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
   kubectl config set-context system:kube-scheduler --cluster=kubernetes --user=system:kube-scheduler --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
   kubectl config use-context system:kube-scheduler --kubeconfig=/etc/kubernetes/kube-scheduler.kubeconfig
@@ -851,7 +928,7 @@ function init_k8s_other() {
   #kubelet
   echo -e "$normal""配置主机$current_node_name kubelet配置文件"
   BOOTSTRAP_TOKEN=$(awk -F "," '{print $1}' /etc/kubernetes/token.csv)
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$current_node_ip":6443 --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
   kubectl config set-credentials kubelet-bootstrap --token="$BOOTSTRAP_TOKEN" --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
   kubectl config set-context default --cluster=kubernetes --user=kubelet-bootstrap --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
   kubectl config use-context default --kubeconfig=/etc/kubernetes/kubelet-bootstrap.kubeconfig
@@ -918,7 +995,7 @@ EOF"
       "cacheUnauthorizedTTL": "30s"
     }
   },
-  "address": "$k8s_master_ip",
+  "address": "$current_node_ip",
   "port": 10250,
   "readOnlyPort": 10255,
   "cgroupDriver": "systemd",
@@ -966,7 +1043,7 @@ EOF
 
   systemctl daemon-reload && systemctl enable --now kubelet
 
-  for HOST in ${k8s_other_names[@]}; do
+  for HOST in "${k8s_other_names[@]}"; do
     scp /etc/kubernetes/kubelet-bootstrap.kubeconfig "$HOST":/etc/kubernetes/
     #scp /etc/kubernetes/kubelet.json "$HOST":/etc/kubernetes/;
     scp /etc/kubernetes/pki/ca.pem "$HOST":/etc/kubernetes/pki
@@ -996,7 +1073,7 @@ EOF
 }
 EOF
   cfssl gencert -ca=/etc/kubernetes/pki/ca.pem -ca-key=/etc/kubernetes/pki/ca-key.pem -config=/etc/kubernetes/pki/ca-config.json -profile=kubernetes kube-proxy-csr.json | cfssljson -bare /etc/kubernetes/pki/kube-proxy
-  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$k8s_master_ip":6443 --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
+  kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.pem --embed-certs=true --server=https://"$current_node_ip":6443 --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
   kubectl config set-credentials kube-proxy --client-certificate=/etc/kubernetes/pki/kube-proxy.pem --client-key=/etc/kubernetes/pki/kube-proxy-key.pem --embed-certs=true --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
   kubectl config set-context default --cluster=kubernetes --user=kube-proxy --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
   kubectl config use-context default --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
@@ -1040,7 +1117,7 @@ EOF
   systemctl daemon-reload
   systemctl enable --now kube-proxy
 
-  for HOST in ${k8s_other_names[@]}; do
+  for HOST in "${k8s_other_names[@]}"; do
     #scp /etc/kubernetes/kube-proxy.yaml "$HOST":/etc/kubernetes/
     scp /etc/kubernetes/kube-proxy.kubeconfig "$HOST":/etc/kubernetes/
     scp /usr/lib/systemd/system/kube-proxy.service "$HOST":/usr/lib/systemd/system/
@@ -1079,7 +1156,7 @@ function init_storage_class() {
       echo -e "$normal""已检测到helm包./package/longhorn-1.3.2.tgz"
     fi
 
-    for HOST in ${k8s_all_names[@]}; do
+    for HOST in "${k8s_all_names[@]}"; do
       ssh root@"$HOST" "systemctl enable iscsid --now"
     done
 
@@ -1432,7 +1509,7 @@ EOF
   echo -e "$normal""部署metrics-server"
   kubectl apply -f ./package/metrics-server.yaml
   while true; do
-    if kubectl top nodes | wc -l -eq 0; then
+    if [ "$(kubectl top nodes | wc -l)" -eq 0 ]; then
       echo -e "$wait""等待metrics-server启动完成..."
       kubectl top nodes
       sleep 20
@@ -1449,7 +1526,6 @@ EOF
 }
 
 function menu() {
-  mkdir log
   mkdir package
   clear
 
@@ -1457,8 +1533,8 @@ function menu() {
   sleep 1
   echo -e "1.""[\033[33m我的网络很好, 请脚本自动下载各依赖包\033[0m]"
   echo "     -->wget https://dl.k8s.io/v1.20.4/kubernetes-server-linux-amd64.tar.gz -P ./package/
-     -->wget https://github.com/containerd/containerd/releases/download/v1.6.1/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -P ./package/
-     -->wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.amd64 -P ./package/
+     -->wget https://github.com/containerd/containerd/releases/download/v1.6.21/cri-containerd-cni-1.6.21-linux-amd64.tar.gz -P ./package/
+     -->wget http://rpmfind.net/linux/centos/8-stream/BaseOS/x86_64/os/Packages/libseccomp-2.5.2-1.el8.x86_64.rpm -P ./package/
      -->wget https://github.com/etcd-io/etcd/releases/download/v3.5.2/etcd-v3.5.2-linux-amd64.tar.gz -P ./package/
      -->wget https://get.helm.sh/helm-v3.11.0-linux-amd64.tar.gz -P ./package/
      -->wget https://docs.projectcalico.org/v3.18/manifests/calico.yaml -P ./package/
@@ -1482,8 +1558,8 @@ function menu() {
     clear
     echo -e "$normal""正在下载依赖包"
     wget https://dl.k8s.io/v1.20.4/kubernetes-server-linux-amd64.tar.gz -P ./package/
-    wget https://github.com/containerd/containerd/releases/download/v1.6.1/cri-containerd-cni-1.6.1-linux-amd64.tar.gz -P ./package/
-    wget https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.amd64 -P ./package/
+    wget https://github.com/containerd/containerd/releases/download/v1.6.21/cri-containerd-cni-1.6.21-linux-amd64.tar.gz -P ./package/
+    wget http://rpmfind.net/linux/centos/8-stream/BaseOS/x86_64/os/Packages/libseccomp-2.5.2-1.el8.x86_64.rpm -P ./package/
     wget https://github.com/etcd-io/etcd/releases/download/v3.5.2/etcd-v3.5.2-linux-amd64.tar.gz -P ./package/
     wget https://get.helm.sh/helm-v3.11.0-linux-amd64.tar.gz -P ./package/
     wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64 -P ./package/
@@ -1504,12 +1580,12 @@ function menu() {
     echo -e "$err""当前package目录下缺少 kubernetes-server-linux-amd64.tar.gz 文件"
     exit_flag=1
   fi
-  if [ ! -f "./package/cri-containerd-cni-1.6.1-linux-amd64.tar.gz" ]; then
-    echo -e "$err""当前package目录下缺少 cri-containerd-cni-1.6.1-linux-amd64.tar.gz 文件"
+  if [ ! -f "./package/cri-containerd-cni-1.6.21-linux-amd64.tar.gz" ]; then
+    echo -e "$err""当前package目录下缺少 cri-containerd-cni-1.6.21-linux-amd64.tar.gz 文件"
     exit_flag=1
   fi
-  if [ ! -f "./package/runc.amd64" ]; then
-    echo -e "$err""当前package目录下缺少 runc.amd64 文件"
+  if [ ! -f "./package/libseccomp-2.5.2-1.el8.x86_64.rpm" ]; then
+    echo -e "$err""当前package目录下缺少 libseccomp-2.5.2-1.el8.x86_64.rpm 文件"
     exit_flag=1
   fi
   if [ ! -f "./package/etcd-v3.5.2-linux-amd64.tar.gz" ]; then
@@ -1543,37 +1619,14 @@ function menu() {
   fi
 }
 
-function make_dir() {
-  for HOST in ${k8s_all_names[@]}; do
-    {
-      echo -e "$normal""创建$HOST目录"
-      ssh root@"$HOST" "mkdir -p /etc/cni/net.d"
-      ssh root@"$HOST" "mkdir -p /etc/containerd"
-      ssh root@"$HOST" "mkdir -p /opt/cni/bin /etc/cni/net.d"
-      ssh root@"$HOST" "mkdir -p /etc/kubernetes/pki /etc/kubernetes/manifests/"
-      ssh root@"$HOST" "mkdir -p /etc/kubernetes/manifests/"
-      ssh root@"$HOST" "mkdir -p /etc/systemd/system/kubelet.service.d /var/lib/kubelet /var/lib/kube-proxy /var/log/kubernetes"
-    } >>./log/"$HOST".txt
-  done
-
-  for HOST in ${k8s_master_names[@]}; do
-    {
-      echo -e "$normal""创建$HOST目录"
-      ssh root@"$HOST" "mkdir -p /etc/etcd/ssl"
-      ssh root@"$HOST" "mkdir -p /var/lib/etcd/default.etcd"
-    } >>./log/"$HOST".txt
-  done
-  mkdir ~/.kube
-}
-
 function init_d3os() {
   echo -e "$normal""开始引导d3os平台(约需要5min)"
-  kubectl apply -f ./package/d3os-platform-installer.yaml
+  kubectl apply -f $d3os_installer_path
 
   sleep 2
   while true; do
-    if kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {}; then
-      if kubectl apply -f ./package/d3os-cluster-configuration.yaml; then
+    if kubectl get pod -n $ks_namespace -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n $ks_namespace {}; then
+      if kubectl apply -f $d3os_configuration_path; then
         break
       fi
     fi
@@ -1581,16 +1634,16 @@ function init_d3os() {
   done
 
   sleep 1
-  kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^Task .* failed:\|d3os-platform installation completed/ Q'
+  kubectl get pod -n $ks_namespace -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n $ks_namespace {} -f | sed '/^Task .* failed:\|d3os-platform installation completed/ Q'
 
   while true; do
-    if kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} | grep 'd3os-platform installation completed' &>/dev/null; then
+    if kubectl get pod -n $ks_namespace -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n $ks_namespace {} | grep 'd3os-platform installation completed' &>/dev/null; then
       echo 'd3os-platform installation completed!'
       break
     else
-      kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl delete -n d3os-system pod {};
+      kubectl get pod -n $ks_namespace -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl delete -n $ks_namespace pod {};
       sleep 2
-      kubectl get pod -n d3os-system -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n d3os-system {} -f | sed '/^Task .* failed:\|d3os-platform installation completed/ Q'
+      kubectl get pod -n $ks_namespace -l app=ks-install -o jsonpath="{.items[0].metadata.name}" | xargs -i kubectl logs -n $ks_namespace {} -f | sed '/^Task .* failed:\|d3os-platform installation completed/ Q'
     fi
     sleep 2
   done
@@ -1598,8 +1651,8 @@ function init_d3os() {
 
 function uninstall_d3os() {
   echo -e "$normal""开始卸载d3os平台"
-  chmod +x ./package/d3os-platform-delete.sh
-  ./package/d3os-platform-delete.sh
+  chmod +x $d3os_delete_path
+  $d3os_delete_path
   echo -e "$normal""d3os平台已完成卸载"
 }
 
@@ -1759,7 +1812,7 @@ function uninstall_k8s() {
     fi
   done
 
-  for HOST in ${k8s_all_names[@]}; do
+  for HOST in "${k8s_all_names[@]}"; do
     echo -e "$normal""停止$HOST kube-proxy"
     ssh root@"$HOST" "systemctl stop kube-proxy;systemctl disable kube-proxy"
 
@@ -1770,7 +1823,7 @@ function uninstall_k8s() {
     ssh root@"$HOST" "systemctl stop containerd;systemctl disable containerd"
   done
 
-  for HOST in ${k8s_master_names[@]}; do
+  for HOST in "${k8s_master_names[@]}"; do
     echo -e "$normal""停止$HOST kube-scheduler"
     ssh root@"$HOST" "systemctl stop kube-scheduler;systemctl disable kube-scheduler"
 
@@ -1786,7 +1839,7 @@ function uninstall_k8s() {
 
   sleep 3
 
-  for HOST in ${k8s_all_names[@]}; do
+  for HOST in "${k8s_all_names[@]}"; do
     echo -e "$normal""停止$HOST calico网卡"
     ssh root@"$HOST" "modprobe -r ipip"
     ssh root@"$HOST" "ip link delete kube-ipvs0"
@@ -1795,7 +1848,7 @@ function uninstall_k8s() {
 
   sleep 1
 
-  for HOST in ${k8s_all_names[@]}; do
+  for HOST in "${k8s_all_names[@]}"; do
     ssh root@"$HOST" "rm -rf ~/.kube/"
     ssh root@"$HOST" "rm -rf /etc/kubernetes/"
     ssh root@"$HOST" "rm -rf /etc/systemd/system/kubelet.service.d"
@@ -1857,6 +1910,7 @@ function uninstall() {
 }
 
 clear
+mkdir log 2>/dev/null
 echo "#####################################################################"
 echo -e "#           D3OS平台一键安装脚本"
 echo -e "# 作者: cosmoplat"
@@ -1865,19 +1919,24 @@ echo -e "# "
 echo -e "# 该脚本示例默认四台主机，其中一台为master，三台为worker"
 echo -e "# 该脚本已适配centos7.9"
 echo "#####################################################################"
-echo -e "1.""[\033[33m优化系统内核\033[0m]"
+echo -e "1.""[\033[33m配置系统参数\033[0m]"
 echo -e "     -->配置host文件
      -->配置ssh免密登录
-     -->配置系统内核参数
-     -->升级系统内核(\033[31m会重启主机\033[0m)"
-echo -e "2.""[\033[33m二进制安装k8s并引导D3os平台\033[0m]"
+     -->配置系统内核参数"
+echo -e "2.""[\033[33m升级系统内核\033[0m]"
+echo -e "     -->升级系统内核
+     -->\033[31m重启主机\033[0m"
+echo -e "3.""[\033[33m二进制安装k8s\033[0m]"
 echo "     -->安装etcd
      -->安装containerd
      -->安装kube-apiserver、kubectl、kube-controller-manager、kube-scheduler
      -->安装kubelet、kube-proxy
      -->安装calico、coredns
      -->安装D3os平台(可选)"
-echo -e "3.""[\033[33m卸载D3OS\033[0m]"
+echo -e "4.""[\033[33m安装D3os平台\033[0m]"
+echo "     -->安装D3os平台installer
+     -->installer引导其余组件安装"
+echo -e "5.""[\033[33m卸载D3OS\033[0m]"
 echo "     -->卸载D3OS工业操作系统
      -->卸载二进制k8s集群(可选)"
 echo -e "0.""[\033[33m退出\033[0m]"
@@ -1894,9 +1953,13 @@ case $cosmoplat in
   echo -e "$normal"set_local finished
   init_os
   echo -e "$normal"init_os finished
-  echo -e "$star""脚本执行完毕""$star"
   ;;
 2)
+  #----升级系统内核----
+  update_kernel
+  echo -e "$normal"update_kernel finished
+  ;;
+3)
   #----目录----
   menu
   echo -e "$normal"menu finished
@@ -1920,27 +1983,20 @@ case $cosmoplat in
   #----安装k8s应用----
   init_k8s_pod
   echo -e "$normal"init_k8s_pod finished
-
-  read -rp "引导D3os平台[y/n]" d3os
-  case $d3os in
-  y)
-    #----安装D3OS平台
-    init_d3os
-    echo -e "$normal"init_d3os finished
-    echo -e "$star""脚本执行完毕""$star"
-    ;;
-  *)
-    echo -e "$star""脚本执行完毕""$star"
-    ;;
-  esac
   ;;
-3)
+4)
+  #----安装D3OS平台
+  init_d3os
+  echo -e "$normal"init_d3os finished
+  ;;
+5)
   #----卸载k8s----
   uninstall
-  echo -e "$star""脚本执行完毕""$star"
   ;;
 *)
   echo -e "$err""未选择正确的操作,退出"
   exit 1
   ;;
 esac
+
+echo -e "$star""脚本执行完毕""$star"
