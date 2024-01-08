@@ -1,0 +1,25 @@
+1.mount.sh
+#!/bin/bash
+i=1
+for j in {b..e}; do
+mkfs.xfs -f /dev/sd$j
+echo "/dev/sd$j /data$i xfs defaults 0 0" >> /etc/fstab
+mkdir -p /data$i
+let i=i+1
+done
+mount -a
+
+2.check disk_io.sh
+disk_test_log="/root/disk_test_log_$(date +%H%M%S).log"
+
+[ ! -f $disk_test_log ] && touch $disk_test_log
+
+for disk in $(ls -d /data*);do
+    diskname=$(mount | grep "$disk" | awk '{print $1}')
+    pushd $disk > /dev/null
+      echo "测试disk: $diskname 写入" | tee -a $disk_test_log
+      dd if=/dev/zero of=testfile bs=8k count=400000 oflag=direct | tee -a $disk_test_log
+      echo "测试disk: $diskname 读取"
+      dd if=testfile of=/dev/null bs=8k count=400000 iflag=direct | tee -a $disk_test_log
+    popd > /dev/null
+done
