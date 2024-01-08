@@ -1,0 +1,8 @@
+1.版本7.16.1的es镜像有问题，无法直接启动，报错权限问题。。。官方镜像默认启动都无法运行，呵呵了。
+2.版本8.6.2的es镜像可以默认启动，但是挂载configmap时，出现Device or resource busy问题，具体报错
+
+/usr/share/elasticsearch/config/elasticsearch.yml.JIipegVRRAaZuE1DWKMLgA.tmp -> /usr/share/elasticsearch/config/elasticsearch.yml: Device or resource busy
+
+3.经检查需要一个initContainer去初始化两个目录的777权限，并且configmap不能用subpath
+
+4.如果使用postStart插入数据，要使用sleep 20 等待es容器启动

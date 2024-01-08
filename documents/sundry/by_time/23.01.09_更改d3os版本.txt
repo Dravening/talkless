@@ -1,0 +1,2 @@
+ks-apiserver:   registry.cn-hangzhou.aliyuncs.com/wangfei-k8s/ks-apiserver:v3.1.1
+ks-console:   registry.cn-hangzhou.aliyuncs.com/jgqk8s/ks-console:latest

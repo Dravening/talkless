@@ -1,0 +1,28 @@
+背景
+
+114环境的10.206.114.6，10.206.114.8节点NotReady。
+
+排查
+
+经journalctl -xefu kubelet​查看，发现出现了pleg问题。
+
+经调查，发现k8s内pod运行状态和docker内container运行状态不符，考虑是kubelet和docker间的状态同步出现了问题；
+
+初步得出结论(推测)，可能是docker内容器状态出现死锁（尤其可能是探针过于频繁），导致kubelet无法正确管控docker。
+
+处理方案
+
+1.首先通过​journalctl -xefu kubelet或journalctl -xefu docker定位到具体的问题pod或是container。
+journalctl -u docker   --since "2022-12-21 21:30"
+
+2.下掉有问题的pod，删除有问题的container。可能无法优雅删除，考虑使用docker kill --signal=9 <container>​​​。甚至可以考虑使用ps aux | grep <container>，然后kill -9 pid。
+
+3.问题container都下掉后，重启kubelet；
+
+4.如果有其它报错，检查kubectl get pods -A是否有异常pod，delete掉异常pod。
+
+5.集群则可以恢复正常
+
+
+
+ps：如果遇到docker响应过慢的问题，也归类为docker死锁问题；可以考虑systemctl restart docker，一般可以解决。

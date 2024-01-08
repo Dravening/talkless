@@ -1,0 +1,9 @@
+pg_dump -U postgres -d iotplat  --inserts  -f pgsql_1_03.sql
+pg_dump  --host localhost --port 5432 -U postgres -f /var/lib/postgresql/data/iotplat.sql iotplat
+
+docker rm $( docker ps -qf status=exited)
+docker rmi -f $(docker images -f "dangling=true" -q)
+
+
+查看僵死进程
+ps -A -ostat,ppid,pid,cmd |grep -e '^[Zz]'

@@ -1,0 +1,26 @@
+1.备份sql，获得文件XXX.sql
+
+2.修改XXX.sql，增加用户数据
+
+create user d3os identified by 'd3os@cosmoplat';
+grant all on *.* to d3os@'%' identified by 'd3os@cosmoplat' with grant option;
+flush privileges;
+
+3.创建一个my.cnf
+[mysqld]
+character-set-server=utf8
+[client]
+default-character-set=utf8
+[mysql]
+default-character-set=utf8
+
+
+4.docker run -itd -e MYSQL_ALLOW_EMPTY_PASSWORD=true -e MYSQL_DATABASE=datathread_dev  mysql:5.7
+
+docker run -itd -e MYSQL_ROOT_PASSWORD=d3os@cosmoplat -e MYSQL_DATABASE=datathread_dev          mysql:5.7 --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+
+5.
+docker cp XXX.sql   XXXXXXXXX:/docker-entrypoint-initdb.d/
+docker cp my.cnf   XXXXXXXXX:/etc/mysql/
+
+6.docker commit XXXXXXXXX registry-edge.cosmoplat.com/d3os/XXXXXX:v1.0.0

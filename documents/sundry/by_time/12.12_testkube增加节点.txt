@@ -1,0 +1,9 @@
+使用kk工具可以给k8s集群增加节点
+
+请参考https://kubesphere.com.cn/docs/v3.3/installing-on-linux/cluster-operation/add-new-nodes
+
+1./kk create config --from-cluster
+
+2.修改sample.yml文件
+
+3./kk add nodes -f sample.yaml

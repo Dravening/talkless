@@ -1,0 +1,66 @@
+./kk delete cluster
+
+sudo kubeadm reset -f
+
+
+systemctl stop kubelet
+systemctl stop kube-proxy
+systemctl stop containerd
+
+systemctl stop kube-apiserver
+systemctl stop kube-controller-manager
+systemctl stop kube-scheduler
+systemctl stop etcd
+
+sudo rm -rvf $HOME/.kube
+sudo rm -rvf ~/.kube/
+sudo rm -rvf /etc/kubernetes/
+sudo rm -rvf /etc/systemd/system/kubelet.service.d
+sudo rm -rvf /etc/systemd/system/kubelet.service
+sudo rm -rvf /usr/bin/kube*
+sudo rm -rvf /etc/cni
+sudo rm -rvf /opt/cni
+sudo rm -rvf /var/lib/etcd
+sudo rm -rvf /var/lib/kube*
+sudo rm -rvf /var/etcd
+sudo rm -rvf /etc/systemd/system/kubelet.service
+sudo rm -rvf /etc/systemd/system/kube*
+sudo rm -rvf /etc/etcd/
+
+rm -rf ~/.kube/
+rm -rf /etc/kubernetes/
+rm -rf /etc/systemd/system/kubelet.service.d
+rm -rf /etc/systemd/system/kubelet.service
+rm -rf /usr/bin/kube*
+rm -rf /etc/cni
+rm -rf /opt/cni
+rm -rf /var/lib/etcd
+rm -rf /var/lib/kube*
+rm -rf /var/etcd
+rm -rf /etc/systemd/system/kubelet.service
+rm -rf /etc/systemd/system/kube*
+rm -rf /etc/etcd/
+
+
+1、杀死运行的容器：
+
+# docker kill $(docker ps -a -q)
+
+2、删除所有容器：
+
+# docker rm $(docker ps -a -q)
+
+3、强制删除所有镜像：
+
+# docker rmi -f $(docker images -q)
+
+
+
+yum remove docker \
+docker-client \
+docker-client-latest \
+docker-common \
+docker-latest \
+docker-latest-logrotate \
+docker-logrotate \
+docker-engine

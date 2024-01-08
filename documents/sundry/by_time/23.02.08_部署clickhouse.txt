@@ -1,0 +1,15 @@
+| 使用 Helm + Operator 部署
+前置条件
+已安装 Kubernetes 集群；
+已安装 Helm 包管理工具。
+部署步骤
+1、添加 RadonDB ClickHouse 的 Helm 仓库
+
+$ helm repo add ck https://radondb.github.io/radondb-clickhouse-kubernetes/
+$ helm repo update
+2、部署 RadonDB ClickHouse Operator
+
+$ helm install clickhouse-operator ck/clickhouse-operator
+3、部署 RadonDB ClickHouse 集群
+
+$ helm install clickhouse ck/clickhouse-cluster

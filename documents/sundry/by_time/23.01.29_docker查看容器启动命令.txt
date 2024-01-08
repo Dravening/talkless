@@ -1,0 +1,12 @@
+yum -y install python-pip
+#如果安装不成功可通过安装python36先安装python36，然后就会自动安装pip3
+yum -y install python36
+
+
+pip3 install runlike
+
+
+runlike  -p container_name
+
+[root@master ~]# runlike  c065ba93ad18
+b"docker run --name=k8s_POD_kube-apiserver-master_kube-system_aea59cb4750d417bac94eaed2fe33e47_1 --hostname=master --network=host --workdir=/ --label='tier=control-plane' --label='component=kube-apiserver' --label='annotation.kubernetes.io/config.seen=2022-11-16T02:12:58.286261601+08:00' --label='io.kubernetes.pod.uid=aea59cb4750d417bac94eaed2fe33e47' --label='io.kubernetes.pod.namespace=kube-system' --label='io.kubernetes.container.name=POD' --label='io.kubernetes.docker.type=podsandbox' --label='annotation.kubernetes.io/config.source=file' --label='annotation.kubernetes.io/config.hash=aea59cb4750d417bac94eaed2fe33e47' --label='annotation.kubeadm.kubernetes.io/kube-apiserver.advertise-address.endpoint=10.206.114.4:6443' --label='io.kubernetes.pod.name=kube-apiserver-master' --log-opt max-file=3 --log-opt max-size=50m --runtime=runc --detach=true registry.cn-beijing.aliyuncs.com/kubesphereio/pause:3.2"

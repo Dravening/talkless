@@ -1,0 +1,16 @@
+背景：
+删除了longhorn导致所有pvc和pv处于Terminating状态；强制删除pod，对应的pvc被连带删除；但pv仍然存在，使用
+kubectl patch pv <pv-name> -p '{"metadata":{"finalizers":null}}'
+命令强制删除后；df -h命令hang住。
+
+分析：
+df -h hang住一般有两种可能性，磁盘满了，或是mount出问题；显然是mount出问题了。
+
+操作：
+mount | grep "pvc"
+mount | grep "longhorn"
+
+用umount解绑显示的路径。
+
+注意：部分显示了10.96.105.17:/pvc-484074bd-7b79-49df-a288-c2625c41d20f on /etc/cni/net.d/pods/6c83e3a8-c4db-487c-ace0-8a212034e2aa/XXXXXXX
+的这类路径，是无法umount的，需要ssh到对应的节点，执行umount。

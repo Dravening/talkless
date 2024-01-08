@@ -1,0 +1,65 @@
+docker run -itd nginx
+docker cp   /root/draven/dist  56326fd4f273:/usr/share/nginx/
+docker exec -it 56326fd4f273 /bin/bash
+    rm -rf   /usr/share/nginx/html/*
+    cp -r    /usr/share/nginx/dist/*   /usr/share/nginx/html/
+    rm -rf   /usr/share/nginx/dist
+    exit
+docker commit 56326fd4f273  mynginx:20230105
+docker run -dit --name mynginx-2 -p 802:80 mynginx:20230105
+
+
+mysql -ud3os -pd3os@cosmoplat
+
+docker run -it -v /tmp/tmp:/tmp   registry-edge.cosmoplat.com/d3os/mysql-dt-studio:v0.1.0 /bin/bash
+
+
+      - hostPath:
+          path: /usr/bin/docker
+          type: DirectoryOrCreate
+        name: docker
+
+./kk create cluster --with-kubernetes v1.22.12 --with-kubesphere v3.3.1
+
+
+
+
+cat >> ./nginx.conf << EOF
+
+user  nginx;
+worker_processes  auto;
+
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    include /etc/nginx/conf.d/*.conf;
+    
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+EOF

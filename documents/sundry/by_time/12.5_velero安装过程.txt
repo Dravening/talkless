@@ -1,0 +1,33 @@
+1.第一步先下载zip包，获得velero执行文件（client）。
+2.tar zxvf velero-v1.10.0-linux-amd64.tar.gz  并且 cp velero /usr/local/bin/
+3.安装minio,记得初始化bucket   velero
+
+4.写凭证
+cat > ./velero-v1.10.0-linux-amd64/credentials-velero << EOF
+[default]
+aws_access_key_id = minio
+aws_secret_access_key = minio123
+EOF
+
+5.velero install \
+    --provider aws \
+    --plugins velero/velero-plugin-for-aws:v1.2.1 \
+    --bucket velero \
+    --secret-file ./credentials-velero \
+    --backup-location-config region=minio,s3ForcePathStyle="true",s3Url=http://minio.yangyuzhe-project.svc:9000 \
+    --use-volume-snapshots=false \
+    --use-node-agent --wait
+
+日志报错  Current BackupStorageLocations available/unavailable/unknown: 0/0/1
+
+6.kubectl apply -f examples/nginx-app/with-pv.yaml
+
+7.velero backup create nginx-backup --include-namespaces nginx-example --csi-snapshot-timeout=20m
+
+8.kubectl delete namespaces nginx-example
+
+9.velero restore create --from-backup nginx-backup
+
+10.卸载
+kubectl delete namespace/velero clusterrolebinding/velero
+kubectl delete crds -l component=velero

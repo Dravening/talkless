@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    meta.helm.sh/release-name: ks-jenkins
+    meta.helm.sh/release-namespace: kubesphere-devops-system
+  labels:
+    app: ks-jenkins
+    app.kubernetes.io/managed-by: Helm
+    chart: jenkins-0.19.0
+    heritage: Helm
+    release: ks-jenkins
+  name: ks-jenkins
+  namespace: kubesphere-devops-system
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+  volumeMode: Filesystem
+status:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 8Gi

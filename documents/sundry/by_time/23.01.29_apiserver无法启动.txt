@@ -1,0 +1,12 @@
+1.apiserver 无法启动，发现是2379的问题
+
+2.查看etcd，发现果然有问题
+
+3.netstat | wc -l 发现连接过多
+
+4.重启docker解决netstat连接过多的问题
+
+5.重启etcd
+systemctl restart etcd
+
+6.问题解决

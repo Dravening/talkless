@@ -1,0 +1,28 @@
+1.首先systemctl status docker报错
+Job docker.service/start failed with result 'dependency'
+
+2.已知docker启动依赖的'dependency'有三个，分别是
+systemctl status containerd
+systemctl status dockerd
+systemctl status docker.socket
+
+3.发现docker.socket无法启动
+[root@k8s-master d3os-operator]# systemctl status docker.socket
+● docker.socket - Docker Socket for the API
+   Loaded: loaded (/usr/lib/systemd/system/docker.socket; disabled; vendor preset: disabled)
+   Active: failed (Result: resources)
+   Listen: /run/docker.sock (Stream)
+
+Aug 16 16:23:25 k8s-master systemd[1]: docker.socket failed to listen on sockets: Address already in use
+Aug 16 16:23:25 k8s-master systemd[1]: Failed to listen on Docker Socket for the API.
+Aug 16 16:29:48 k8s-master systemd[1]: docker.socket failed to listen on sockets: Address already in use
+Aug 16 16:29:48 k8s-master systemd[1]: Failed to listen on Docker Socket for the API.
+Aug 16 16:29:57 k8s-master systemd[1]: docker.socket failed to listen on sockets: Address already in use
+Aug 16 16:29:57 k8s-master systemd[1]: Failed to listen on Docker Socket for the API.
+Aug 16 16:31:14 k8s-master systemd[1]: docker.socket failed to listen on sockets: Address already in use
+Aug 16 16:31:14 k8s-master systemd[1]: Failed to listen on Docker Socket for the API.
+
+4.查找/var/run/docker.sock，发现它竟然是一个目录。。。
+
+5.删掉/var/run/docker.sock目录，问题解决。
+rm -rf /var/run/docker.sock

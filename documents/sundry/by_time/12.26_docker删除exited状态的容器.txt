@@ -1,0 +1,17 @@
+查询状态时exited的容器
+docker ps -f status=exited
+
+docker ps -f status=exited -q
+
+docker rm $(docker ps -f status=exited -q)
+
+
+1.systemctl stop kubelet
+
+2.docker stop $(docker ps -a -q)
+
+3.docker rm $(docker ps -a -q)
+
+4.查看/var/lib/docker/containers/
+
+5.systemctl start kubelet

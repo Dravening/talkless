@@ -1,0 +1,7 @@
+https://blog.csdn.net/qq_39382769/article/details/124812543
+
+在某些内核版本上，cgroup 的 kmem account 特性有内存泄露问题。
+特点是 pod 的 "cannot allocated memory"报错，
+node 内核日志的“SLUB: Unable to allocate memory on node -1”报错
+
+处理方式是升级操作系统内核到4.X版本以上

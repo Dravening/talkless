@@ -1,0 +1,2 @@
+1.查找进程中的死亡进程（一般是io问题）
+ps -A -o stat,ppid,pid,cmd | grep -e '^[Dd]'

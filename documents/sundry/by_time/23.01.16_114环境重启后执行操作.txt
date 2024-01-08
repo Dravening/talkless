@@ -1,0 +1,4 @@
+d3os-device-simulator(d3os-device-simulator)
+http://10.206.114.4:30428/api/doc.html
+
+arch=$(uname -m); curl -LO https://kubeedge.pek3b.qingstor.com/bin/v1.6.2/$arch/keadm-v1.6.2-linux-$arch.tar.gz  && tar xvf keadm-v1.6.2-linux-$arch.tar.gz && chmod +x keadm && ./keadm join --kubeedge-version=1.6.2 --region=zh --cloudcore-ipport=192.168.0.89:10000 --quicport 10001 --certport 10002 --tunnelport 10004 --edgenode-name edgenode-k5w1 --edgenode-ip 192.168.0.201 --token d1e946c5ae1393efde23ddcc9df5e59353e7ecdc6b0dfbee38dc99943c385bc4.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NzM5MzgzODJ9.U3lBuM4E1ESOLXhbasgcHJU_z2To9A4zhDoWYPrxZ-8 --with-edge-taint

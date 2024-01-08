@@ -1,0 +1,20 @@
+背景
+kubeadm默认会将kubelet的地址存储在/var/lib/kubelet下，有时需要修改此地址。
+
+步骤
+1.vim /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+修改其中的Environment="KUBELET_EXTRA_ARGS=--root-dir=/data/var/lib/kubelet"
+
+2.systemctl stop kubelet
+
+3.清理mount链接
+for m in $(tac /proc/mounts | awk '{print $2}' | sudo grep -e ^/var/lib/kubelet);do
+  umount $m
+done
+
+4.cp -r /var/lib/kubelet /data/var/lib
+
+5.systemctl daemon-reload
+
+6.systemctl start kubelet

@@ -1,0 +1,4 @@
+notebook镜像
+registry-edge.cosmoplat.com/notebook/base_notebook-1
+
+如果由于镜像过大导致AI平台无法上传镜像，可以上传个小的，然后手动改db的配置

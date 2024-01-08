@@ -1,0 +1,380 @@
+1.添加三个节点的主机名
+vim /etc/hosts
+
+2.添加主节点对其余节点的访问
+ssh-keygen
+ssh-copy-id root@cos-1
+ssh-copy-id root@cos-2
+ssh-copy-id root@cos-3
+
+3.安装glusterfs
+yum update -y
+yum install centos-release-gluster -y
+yum install glusterfs-server -y
+
+查看版本
+glusterfs -V
+
+4.运行以下命令在 server1 上加载三个必要的内核模块。
+echo dm_thin_pool | sudo tee -a /etc/modules
+echo dm_snapshot | sudo tee -a /etc/modules
+echo dm_mirror | sudo tee -a /etc/modules
+
+modprobe dm_snapshot
+modprobe dm_mirror
+modprobe dm_thin_pool
+lsmod | grep dm_snapshot
+lsmod | grep dm_mirror
+lsmod | grep dm_thin_pool
+
+5.添加节点
+systemctl start glusterd.service
+systemctl enable glusterd.service
+systemctl status glusterd.service
+
+gluster peer probe cos-2
+gluster peer probe cos-3
+
+6.查看
+gluster peer status
+
+7.下载并安装heketi
+wget https://github.com/heketi/heketi/releases/download/v10.4.0/heketi-v10.4.0-release-10.linux.amd64.tar.gz
+tar -xf heketi-v7.0.0.linux.amd64.tar.gz
+cd heketi
+cp heketi /usr/bin
+cp heketi-cli /usr/bin
+mkdir -p /var/lib/heketi
+mkdir -p /etc/heketi
+
+8.创建 Heketi 服务文件
+cat >> /lib/systemd/system/heketi.service << EOF
+[Unit]
+Description=Heketi Server
+[Service]
+Type=simple
+WorkingDirectory=/var/lib/heketi
+ExecStart=/usr/bin/heketi --config=/etc/heketi/heketi.json
+Restart=on-failure
+StandardOutput=syslog
+StandardError=syslog
+[Install]
+WantedBy=multi-user.target
+EOF
+
+9.创建 JSON 文件以配置 Heketi
+cat >> /etc/heketi/heketi.json << EOF
+{
+  "_port_comment": "Heketi Server Port Number",
+  "port": "8080",
+
+  "_use_auth": "Enable JWT authorization. Please enable for deployment",
+  "use_auth": false,
+
+  "_jwt": "Private keys for access",
+  "jwt": {
+    "_admin": "Admin has access to all APIs",
+    "admin": {
+      "key": "123456"
+    },
+    "_user": "User only has access to /volumes endpoint",
+    "user": {
+      "key": "123456"
+    }
+  },
+
+  "_glusterfs_comment": "GlusterFS Configuration",
+  "glusterfs": {
+    "_executor_comment": [
+      "Execute plugin. Possible choices: mock, ssh",
+      "mock: This setting is used for testing and development.",
+      "      It will not send commands to any node.",
+      "ssh:  This setting will notify Heketi to ssh to the nodes.",
+      "      It will need the values in sshexec to be configured.",
+      "kubernetes: Communicate with GlusterFS containers over",
+      "            Kubernetes exec api."
+    ],
+
+    "executor": "ssh",
+    "_sshexec_comment": "SSH username and private key file information",
+    "sshexec": {
+      "keyfile": "/root/.ssh/id_rsa",
+      "user": "root"
+    },
+
+    "_kubeexec_comment": "Kubernetes configuration",
+    "kubeexec": {
+      "host" :"https://kubernetes.host:8443",
+      "cert" : "/path/to/crt.file",
+      "insecure": false,
+      "user": "kubernetes username",
+      "password": "password for kubernetes user",
+      "namespace": "Kubernetes namespace",
+      "fstab": "Optional: Specify fstab file on node.  Default is /etc/fstab"
+    },
+
+    "_db_comment": "Database file name",
+    "db": "/var/lib/heketi/heketi.db",
+    "brick_max_size_gb" : 1024,
+    "brick_min_size_gb" : 1,
+    "max_bricks_per_volume" : 33,
+
+    "_loglevel_comment": [
+      "Set log level. Choices are:",
+      "  none, critical, error, warning, info, debug",
+      "Default is warning"
+    ],
+    "loglevel" : "debug"
+  }
+}
+EOF
+
+10.启动heketi
+systemctl start heketi
+systemctl enable heketi
+systemctl status heketi
+
+11.为 Heketi 创建拓扑配置文件，该文件包含添加到 Heketi 的集群、节点和磁盘的信息。
+cat >> /etc/heketi/topology.json << EOF
+{
+  "clusters": [
+    {
+      "nodes": [
+        {
+          "node": {
+            "hostnames": {
+              "manage": [
+                  "cos-1"
+              ],
+              "storage": [
+                  "192.168.0.89"
+              ]
+            },
+            "zone": 1
+          },
+          "devices": [
+              "/dev/vdb"
+          ]
+        },
+        {
+          "node": {
+            "hostnames": {
+              "manage": [
+                  "cos-2"
+              ],
+              "storage": [
+                  "192.168.0.210"
+              ]
+            },
+            "zone": 1
+          },
+          "devices": [
+              "/dev/vdb"
+          ]
+        },
+        {
+          "node": {
+            "hostnames": {
+              "manage": [
+                  "cos-3"
+              ],
+              "storage": [
+                  "192.168.0.247"
+              ]
+            },
+            "zone": 1
+          },
+          "devices": [
+              "/dev/vdb"
+          ]
+        }
+      ]
+    }
+  ]
+}
+EOF
+
+12.加载 Heketi JSON 文件
+[root@cosmo-1 heketi]# export HEKETI_CLI_SERVER=http://192.168.0.89:8080
+[root@cosmo-1 heketi]# export HEKETI_CLI_USER=admin
+[root@cosmo-1 heketi]# export HEKETI_CLI_KEY=123456
+
+[root@cosmo-1 heketi]# heketi-cli topology load --json=/etc/heketi/topology.json --user admin --secret 123456
+Creating cluster ... ID: 2cc5c45ded7672c490b7014e8c683f8c
+        Allowing file volumes on cluster.
+        Allowing block volumes on cluster.
+        Creating node 192.168.0.215 ... ID: 24b8ca6752ae02b3b1add687c682d268
+                Adding device /dev/vdb ... OK
+        Creating node 192.168.0.50 ... ID: 4193119f0e297cbdda985079ab8a6c4d
+                Adding device /dev/vdb ... OK
+
+13.检查
+[root@cos-1 heketi]# heketi-cli topology info --user admin --secret 123456
+
+[root@cos-1 heketi]# heketi-cli cluster list
+Clusters:
+Id:65e9887f72856eee2edb604374426c83 [file][block]
+
+14.测试
+[root@cos-1 heketi]# heketi-cli volume create --size=1 --clusters=65e9887f72856eee2edb604374426c83                                  eee2edb604374426c83
+Name: vol_4ea09df42037a9c61355a7df7e38c82b
+Size: 1
+Volume Id: 4ea09df42037a9c61355a7df7e38c82b
+Cluster Id: 65e9887f72856eee2edb604374426c83
+Mount: 192.168.0.247:vol_4ea09df42037a9c61355a7df7e38c82b
+Mount Options: backup-volfile-servers=192.168.0.89,192.168.0.210
+Block: false
+Free Size: 0
+Reserved Size: 0
+Block Hosting Restriction: (none)
+Block Volumes: []
+Durability Type: replicate
+Distribute Count: 1
+Replica Count: 3
+
+附录：
+heketi常见命令
+1、列出volume 信息
+[root@cos-1 heketi]# heketi-cli volume list
+Id:4ea09df42037a9c61355a7df7e38c82b    Cluster:65e9887f72856eee2edb604374426c83    Name:vol_4ea09df42037a9c61355a7df7e38c82b
+
+[root@cos-1 heketi]# gluster volume status
+Status of volume: vol_4ea09df42037a9c61355a7df7e38c82b
+Gluster process                             TCP Port  RDMA Port  Online  Pid
+------------------------------------------------------------------------------
+Brick 192.168.0.210:/var/lib/heketi/mounts/
+vg_8edd4df2fa839919336b59833587226a/brick_8
+d2ddd84e063df86e566de3a24484134/brick       49152     0          Y       2667
+Brick 192.168.0.89:/var/lib/heketi/mounts/v
+g_74c481bd897a8ddf3a3f56da41d1c19a/brick_6e
+e2ffe13261c1296dc99a3876532a7b/brick        49152     0          Y       2986
+Brick 192.168.0.247:/var/lib/heketi/mounts/
+vg_0d097bc84a9deb1f5d42f779fcc04ead/brick_6
+776ffecaf71ae1d6285c1fa9302b5b5/brick       49152     0          Y       2697
+Self-heal Daemon on localhost               N/A       N/A        Y       3003
+Self-heal Daemon on cos-3                   N/A       N/A        Y       2714
+Self-heal Daemon on cos-2                   N/A       N/A        Y       2684
+
+Task Status of Volume vol_4ea09df42037a9c61355a7df7e38c82b
+------------------------------------------------------------------------------
+There are no active volume tasks
+
+2、列出集群信息
+heketi-cli cluster list
+
+3、列出节点Node信息
+heketi-cli node list
+
+4、列出集群信息
+heketi-cli cluster info <集群ID>
+heketi-cli topology info
+
+5、停止卷/启动卷
+[root@cos-1 heketi]# gluster volume stop vol_4ea09df42037a9c61355a7df7e38c82b
+Stopping volume will make its data inaccessible. Do you want to continue? (y/n) y
+volume stop: vol_4ea09df42037a9c61355a7df7e38c82b: success
+
+[root@cos-1 heketi]# heketi-cli volume list
+Id:4ea09df42037a9c61355a7df7e38c82b    Cluster:65e9887f72856eee2edb604374426c83    Name:vol_4ea09df42037a9c61355a7df7e38c82b
+
+[root@cos-1 heketi]# gluster volume status
+Volume vol_4ea09df42037a9c61355a7df7e38c82b is not started
+
+[root@cos-1 heketi]# gluster volume start vol_4ea09df42037a9c61355a7df7e38c82b
+volume start: vol_4ea09df42037a9c61355a7df7e38c82b: success
+
+6、删除卷
+[root@cos-1 heketi]# heketi-cli volume delete 4ea09df42037a9c61355a7df7e38c82b
+Volume 4ea09df42037a9c61355a7df7e38c82b deleted
+
+
+---------------------------------------------------------------------------------------
+1.安装依赖，多台机器都要安装
+yum update -y
+yum install openssl openssl-devel -y
+yum install socat epel-release conntrack-tools -y
+
+2.下载对应版本的kubekey
+curl -sfL https://get-kk.kubesphere.io | VERSION=v1.1.1 sh -
+如果无法下载,可以手动下载
+
+3.创建glusterfs配置文件
+[root@cosmo-1 ~]# cat >> /root/glusterfs-sc.yaml << EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: heketi-secret
+  namespace: kube-system
+type: kubernetes.io/glusterfs
+data:
+  key: "MTIzNDU2"    #请替换为您自己的密钥。Base64 编码。
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  annotations:
+    storageclass.beta.kubernetes.io/is-default-class: "true"
+    storageclass.kubesphere.io/supported-access-modes: '["ReadWriteOnce","ReadOnlyMany","ReadWriteMany"]'
+  name: glusterfs
+parameters:
+  clusterid: "65e9887f72856eee2edb604374426c83"    #请替换为您自己的 GlusterFS 集群 ID。
+  gidMax: "50000"
+  gidMin: "40000"
+  restauthenabled: "true"
+  resturl: "http://192.168.0.89:8080"    #Gluster REST 服务/Heketi 服务 URL 可按需供应 gluster 存储卷。请替换为您自己的 URL。
+  restuser: admin
+  secretName: heketi-secret
+  secretNamespace: kube-system
+  volumetype: "replicate:3"    #请替换为您自己的存储卷类型。
+provisioner: kubernetes.io/glusterfs
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+EOF
+
+4.创建 config-sample.yaml
+[root@cosmo-1 ~]# ./kk create config --with-kubernetes v1.20.4 --with-kubesphere v3.1.1
+[root@cosmo-1 kubesphere]# cat config-sample.yaml
+apiVersion: kubekey.kubesphere.io/v1alpha1
+kind: Cluster
+metadata:
+  name: sample
+spec:
+  hosts:
+  - {name: cosmo-1, address: 192.168.0.215, internalAddress: 192.168.0.215, user: root, password: Cosmo@2022}
+  - {name: cosmo-2, address: 192.168.0.50, internalAddress: 192.168.0.50, user: root, password: Cosmo@2022}
+  roleGroups:
+    etcd:
+    - cosmo-1
+    master:
+    - cosmo-1
+    worker:
+    - cosmo-1
+    - cosmo-2
+  controlPlaneEndpoint:
+    domain: lb.kubesphere.local
+    address: ""
+    port: 6443
+  kubernetes:
+    version: v1.20.4
+    imageRepo: kubesphere
+    clusterName: cluster.local
+  network:
+    plugin: calico
+    kubePodsCIDR: 10.233.64.0/18
+    kubeServiceCIDR: 10.233.0.0/18
+  registry:
+    registryMirrors: []
+    insecureRegistries: []
+  addons:
+  - name: glusterfs
+    namespace: kube-system
+    sources:
+      yaml:
+        path:
+        - /root/glusterfs-sc.yaml
+...
+
+5.安装kubesphere
+[root@cosmo-1 ~]# export KKZONE=cn
+[root@cosmo-1 ~]# ./kk create cluster -f config-sample.yaml

@@ -1,0 +1,13 @@
+1.首先使用mysqlbench获得sql包，此步骤略
+2.运行一个官方包，注意利用环境变量创建默认DB
+docker run -itd -e MYSQL_ALLOW_EMPTY_PASSWORD=true -e MYSQL_DATABASE=datathread_dev  mysql:5.7
+3.把dump数据传入docker-entrypoint-initdb.d目录
+docker cp     Dump20221207    XXXXXXX:/docker-entrypoint-initdb.d/
+4.docker exec -it XXXXXXX  /bin/bash
+        cp   /docker-entrypoint-initdb.d/Dump20221207*    ./docker-entrypoint-initdb.d/
+        rm -rf  /docker-entrypoint-initdb.d/Dump20221207
+        exit
+5.docker commit    XXXXXXXXX    mysql-data-space:v1.0.5
+
+
+mysql -ud3os -pd3os@cosmoplat

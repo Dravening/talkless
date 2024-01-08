@@ -1,0 +1,10 @@
+使用strace df -h
+
+返回这里，可以看到是nfs的问题
+
+stat("/dev/hugepages", {st_mode=S_IFDIR|0755, st_size=0, ...}) = 0
+stat("/boot", {st_mode=S_IFDIR|0555, st_size=4096, ...}) = 0
+stat("/boot/efi", {st_mode=S_IFDIR|0700, st_size=16384, ...}) = 0
+stat("/run/user/0", {st_mode=S_IFDIR|0700, st_size=40, ...}) = 0
+stat("/run/user/1023", {st_mode=S_IFDIR|0700, st_size=40, ...}) = 0
+stat("/nfs",
