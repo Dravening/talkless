@@ -70,3 +70,109 @@ show master status\G
 
 ## 一、常用操作
 
+### 数据库备份
+
+```
+#!/bin/bash
+
+backup_database=$1
+backup_table=$2
+
+excute_date=$(date +"%Y%m%d")
+excute_time=$(date +"%Y%m%d_%H%M")
+backupdir=~/mysqlbackup/$excute_date
+MYSQLPASS="XXXXXXXXXXXX"
+
+[ -z "$backup_database" ] && {
+    echo "请输入要备份的数据库, 支持所有库/单库/单库下的某个表"
+    exit 1
+}
+
+[ -n "$backup_table" ] && {
+    echo "单表备份模式: 备份表==> $backup_table"
+}
+
+while [ "$MYSQLPASS" == "" ]; do
+    read -s -p "请输入MySQLroot用户密码: " MYSQLPASS
+done
+
+excute_date=$(date +"%Y%m%d")
+excute_time=$(date +"%Y%m%d_%H%M")
+backupdir=~/mysqlbackup/$excute_date
+
+mysql_user=root
+mysql_password="$MYSQLPASS"
+mysql_port=3306
+mysql_host=localhost
+mysql_cmd="mysql -u$mysql_user -p$mysql_password -h $mysql_host -P $mysql_port"
+
+[ ! -d $backupdir ] && mkdir -p $backupdir
+
+check_mysql_dbname() {
+    $mysql_cmd -e "show databases" | grep -w $backup_database || {
+        echo "Database $backup_database 不存在, 请检查"
+        exit 1
+    }
+}
+
+check_mysql_table() {
+    $mysql_cmd $backup_database -e "desc $backup_table;" | grep -q Field || {
+        echo "Database $backup_database -> Table $backup_table 不存在, 请检查"
+        exit 1
+    }
+}
+
+backup_single_dbname() {
+    local dbname=$1
+    local ignore_table_db=onedata
+    if [[ "$dbname" =~ "onedata" ]];then
+        ignore_table_db=$dbname
+    fi
+    mysqldump -u$mysql_user -p$mysql_password -h $mysql_host -P $mysql_port --ignore-table=${ignore_table_db}.bi_cache --single-transaction --databases $dbname -c | \
+        gzip > $backupdir/${dbname}_backup_${excute_time}.gz
+}
+
+backup_single_table() {
+    local dbname=$1
+    local table_name=$2
+    mysqldump -u$mysql_user -p$mysql_password -h $mysql_host -P $mysql_port --ignore-table=${ignore_table_db}.bi_cache --single-transaction $dbname $table_name -c | \
+        gzip > $backupdir/${dbname}_TABLE_${table_name}_backup_${excute_time}.gz
+}
+
+backup_all_db() {
+    $mysql_cmd -e "show databases" \
+        | grep -Evw "Database|mysql|information_schema|performance_schema|sys" | while read dbname; do
+        echo $dbname
+        backup_single_dbname $dbname
+    done
+    exit 0
+}
+
+function choose_database() {
+    read -p "SELECT which database to backup" Database
+    $mysql_cmd -e "show databases" | grep -Ev "Database"
+}
+
+function clean_backup_file() {
+    local clean_dir=${1:-$backupdir/..}
+    local keep_some_days=${2:-60}
+    [ -z "$clean_dir" ] && {
+        echo "需要指定删除目录"
+        return 1
+    }
+    find $clean_dir -ctime +$keep_some_days -name "*.gz" -exec rm {} \;
+}
+
+if [ "$backup_database" == "all" ];then
+    backup_all_db
+elif [ -n "$backup_table" ];then
+    check_mysql_dbname
+    check_mysql_table
+    backup_single_table $backup_database $backup_table
+else
+    check_mysql_dbname
+    backup_single_dbname $backup_database
+fi
+
+clean_backup_file
+```
