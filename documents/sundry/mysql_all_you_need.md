@@ -34,6 +34,8 @@
 `set global validate_password_policy=LOW;`
 `set global validate_password_length=4;`
 
+`set global validate_password.policy=LOW; ------ mysql8`
+
 改密
 
 `UPDATE mysql.user SET authentication_string=PASSWORD('<PASSWORD>') WHERE user='root';`
@@ -69,6 +71,9 @@ show master status\G
 ```
 
 ## 一、常用操作
+
+### sql replace
+update <table> set <column> = replace(<column>, '<source>', '<target>');
 
 ### 数据库备份
 
