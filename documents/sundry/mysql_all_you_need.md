@@ -75,8 +75,9 @@ show master status\G
 ### sql replace
 update <table> set <column> = replace(<column>, '<source>', '<target>');
 
-### 数据库备份
+## 二、数据库备份
 
+### mysqldump
 ```
 #!/bin/bash
 
@@ -180,4 +181,39 @@ else
 fi
 
 clean_backup_file
+```
+
+### xtrabackup
+1.下载xtrabackup，选择glibc2.17版本，文件为
+```
+wget https://downloads.percona.com/downloads/Percona-XtraBackup-8.0/Percona-XtraBackup-8.0.35-31/binary/tarball/percona-xtrabackup-8.0.35-31-Linux-x86_64.glibc2.17.tar.gz
+```
+
+2.安装xtrabackup
+```
+tar zxvf percona-xtrabackup-8.0.35-31-Linux-x86_64.glibc2.17.tar.gz
+
+mv percona-xtrabackup-8.0.35-31-Linux-x86_64.glibc2.17 /usr/local/percona-xtrabackup-8.0.35-31-Linux-x86_64.glibc2.17
+
+// 在/etc/profile中的末尾添加export PATH=$PATH:/usr/local/percona-xtrabackup-8.0.35-31-Linux-x86_64.glibc2.17/bin/
+
+export PATH=$PATH:/usr/local/percona-xtrabackup-8.0.35-31-Linux-x86_64.glibc2.17/bin/
+
+```
+
+3.开始备份
+```
+xtrabackup --backup --user=root --password=XXXXXX --host=192.168.2.90 --port=3306 --target-dir=/root/XXXXX/mysql_xtrabackup
+```
+
+4.预处理备份数据。这通常涉及应用事务，以确保数据的一致性
+```
+xtrabackup --prepare --target-dir=/root/xxxxx/mysql_xtrabackup
+```
+
+5.恢复mysql
+```
+systemctl stop mysqld
+scp -r xxx:/root/XXXXX/mysql_xtrabackup/* /var/lib/mysql/
+systemctl start mysqld
 ```
